@@ -223,7 +223,7 @@ a.back:hover{color:var(--ink);}
 })();
 
 /* ============ CONSTANTS ============ */
-const APP_VERSION='v0.123';
+const APP_VERSION='v0.126';
 const SUITS=['P','B','G','Y'];
 const SUIT_NAME={P:'분홍',B:'파랑',G:'초록',Y:'노랑',R:'로켓'};
 const SUIT_ICON={P:'◆',B:'▲',G:'■',Y:'●',R:'🚀'};
@@ -568,13 +568,27 @@ function processTaskPick(){
   // AI heuristic: 손에 든 카드와 일치하는 과제(직접 들고 있으면 타이밍을
   // 스스로 조절할 수 있어 기본적으로 유리)를 우선하되, 그중에서도 값이
   // 낮은 과제는 직접 들고 있어도 트릭을 이기기 어렵다. 최소 5 이상은
-  // 되어야 비교적 안전하고, 3~4는 여전히 낮은 축(9장 중 하위권)이라 다른
-  // 대원 손에 더 높은 카드가 있을 가능성이 커서 스스로 이기기보다 팀
-  // 동료가 리드를 잘 맞춰줘야 겨우 완수되는, 통제하기 어려운 과제다.
-  // 값이 더 높은(=더 쉬운) 매치가 있으면 그것을 먼저 고르고, 낮은 값
-  // 매치만 있을 때만 어쩔 수 없이 그것을 선택한다.
+  // 되어야 비교적 안전하다. 값 4 이하는 9장 중 하위권이라 다른 대원 손에
+  // 더 높은 카드가 있을 가능성이 커서 스스로 이기기 어렵고, 손에 쥐고
+  // 있다는 통제력의 이점도 크지 않다 — 그래서 4 이하 매치밖에 없다면,
+  // 손에 없는(=직접 통제할 수 없지만 어차피 낮은 카드를 억지로 떠안는
+  // 것보다는 나은) 다른 미배정 과제가 남아있는 한 그쪽을 먼저 고려하고,
+  // 정말 다른 선택지가 전혀 없을 때만 어쩔 수 없이 낮은 값 매치를 가져간다.
   const handMatches=avail.filter(t=>player.hand.some(c=>c.suit===t.suit&&c.value===t.value));
-  let choice=handMatches.find(t=>t.value>4) || handMatches.find(t=>t.value>2) || handMatches[0];
+  let choice=handMatches.find(t=>t.value>4);
+  if(!choice){
+    const nonMatch=avail.filter(t=>!handMatches.includes(t));
+    if(nonMatch.length){
+      const counts={};nonMatch.forEach(t=>counts[t.suit]=(counts[t.suit]||0)+1);
+      const suitPref=Object.keys(counts).sort((a,b)=>{
+        const ca=player.hand.filter(c=>c.suit===a).length, cb=player.hand.filter(c=>c.suit===b).length;
+        return cb-ca;
+      })[0];
+      choice=nonMatch.find(t=>t.suit===suitPref)||nonMatch[0];
+    } else {
+      choice=handMatches.find(t=>t.value>2) || handMatches[0];
+    }
+  }
   if(!choice){
     // else prefer suit AI holds most of
     const counts={};avail.forEach(t=>counts[t.suit]=(counts[t.suit]||0)+1);
@@ -892,6 +906,16 @@ function resolveTrick(){
   const allDone=G.pendingTasks.length && G.pendingTasks.every(t=>t.done);
   const freeWin=checkSpecialAchieved();
   if(allDone || freeWin){ endMission(true,'모든 과제를 완수했습니다!'); return; }
+
+  // 남은 트릭 수보다 남은(미완수) 과제 수가 많으면, 설령 남은 트릭을 전부
+  // 과제 완수에 쓴다 해도 물리적으로 다 끝낼 수 없다 — 이미 결과가 확정된
+  // 것이므로 굳이 나머지 트릭을 진행하지 않고 바로 실패 처리한다.
+  const undoneCount=G.pendingTasks.filter(t=>!t.done).length;
+  const tricksLeft=MAXTRICKS-G.trickNumber;
+  if(undoneCount>tricksLeft){
+    endMission(false,`실패: 남은 과제(${undoneCount}개)가 남은 트릭(${tricksLeft}개)보다 많아 완수가 불가능합니다.`);
+    return;
+  }
 
   // next trick
   G.trick={plays:[],ledSuit:null,lastPlayed:null};
@@ -1265,7 +1289,15 @@ function aiChooseCard(pIdx,legal){
       // 이미 다 끝났다면, 굳이 트릭을 가져와 쓸만한 카드를 낭비하기보다는
       // 아직 과제가 남은 동료 쪽으로 자연스럽게 주도권이 가도록 양보한다.
       const iHavePendingTask=G.pendingTasks.some(t=>!t.done && t.owner===pIdx);
-      if(wouldWin) score += iHavePendingTask ? 4 : -2;
+      // 특히 지금 내는 카드와 같은 수트에 내 미완수 과제가 걸려있다면, 이
+      // 트릭을 이겨서 얻는 주도권의 가치가 훨씬 크다 — 내가 리드권을 가져야
+      // 그 수트를 원하는 타이밍(다른 위협 카드들이 정리된 뒤)에 직접 이끌어
+      // 과제 카드를 안전하게 완수시킬 수 있기 때문이다. 그래서 단순히 "과제가
+      // 있다"보다 "이 수트에 내 과제가 있다"를 훨씬 더 높게 쳐준다 — 그래야
+      // 이미 공개(무전)된 이 수트의 높은 카드를 손에 마냥 쌓아두지 않고,
+      // 이길 기회가 왔을 때 적극적으로 써서 주도권을 챙기게 된다.
+      const ownTaskSameSuit=G.pendingTasks.some(t=>!t.done && t.owner===pIdx && t.suit===card.suit);
+      if(wouldWin) score += ownTaskSameSuit ? 12 : (iHavePendingTask ? 4 : -2);
       // 이 카드 자체는 과제 카드가 아니지만, 아직 못 끝낸 과제와 같은 수트라면
       // 그 수트를 우선적으로 내(리드하거나, 어차피 버릴 때 이 수트부터) 과제
       // 카드가 나올 기회를 만든다. 이게 없으면 AI가 미션과 무관한 수트만
