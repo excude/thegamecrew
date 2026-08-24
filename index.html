@@ -223,7 +223,7 @@ a.back:hover{color:var(--ink);}
 })();
 
 /* ============ CONSTANTS ============ */
-const APP_VERSION='v0.119';
+const APP_VERSION='v0.121';
 const SUITS=['P','B','G','Y'];
 const SUIT_NAME={P:'분홍',B:'파랑',G:'초록',Y:'노랑',R:'로켓'};
 const SUIT_ICON={P:'◆',B:'▲',G:'■',Y:'●',R:'🚀'};
@@ -707,7 +707,7 @@ function findCriticalOwnTask(p){
 function pickAiCommOption(p){
   // 미션과 무관한 아무 수트 힌트보다, 아직 안 끝난 과제와 관련된 힌트를
   // 우선적으로 고른다 — 같은 카드 자체가 과제 카드인 경우를 최우선으로,
-  // 그다음은 최소한 과제가 걸린 수트인 경우로 우선순위를 둔다.
+  // 그다음은 자신의 과제 수트, 그다음은 남의 과제 수트 순으로 우선순위를 둔다.
   const options=eligibleCommCards(p);
   if(!options.length) return null;
   const idx=G.players.indexOf(p);
@@ -734,6 +734,13 @@ function pickAiCommOption(p){
     const pool=singleHits.length?singleHits:exact;
     return pool[Math.floor(Math.random()*pool.length)];
   }
+  // 3순위: 자신의 미완수 과제와 같은 수트인 경우 — 그 과제 카드 자체는
+  // 아니더라도(최고/최저가 아니라 알릴 수 없는 경우), 그 수트 자체에 대한
+  // 정보는 결국 그 과제를 내가 직접 처리해야 하므로 다른 사람의 과제
+  // 수트보다 우선적으로 유용하다.
+  const ownUndone=undone.filter(t=>t.owner===idx);
+  const ownSuitMatch=options.filter(o=>ownUndone.some(t=>t.suit===o.card.suit));
+  if(ownSuitMatch.length) return ownSuitMatch[Math.floor(Math.random()*ownSuitMatch.length)];
   const suitMatch=options.filter(o=>undone.some(t=>t.suit===o.card.suit));
   if(suitMatch.length) return suitMatch[Math.floor(Math.random()*suitMatch.length)];
   // 남은 과제와 수트가 겹치는 힌트조차 없다면, 지금 당장은 딱히 도움이 안 되는
@@ -1123,7 +1130,13 @@ function suitLeadDangerValue(suit,pIdx){
     if(p.commCard.suit!==suit) continue;
     const t=G.pendingTasks.find(tt=>!tt.done && tt.suit===p.commCard.suit && tt.value===p.commCard.value);
     if(!t) continue;
-    if(t.owner===p.id) continue; // 본인 과제 카드라면 오히려 좋은 일 — 위험하지 않음
+    // 본인 과제 카드를 강제로 내는 경우는 보통 좋은 일(과제 완수)이지만,
+    // 순서 규칙(tokenTag/rank)상 아직 완수하면 안 되는 상태라면 얘기가
+    // 다르다 — 그 대원은 선택의 여지 없이 이 카드를 내야 하고, 그 카드가
+    // 이번 트릭을 이기면 "너무 일찍 완수"로 확정 실패한다. 즉 본인 과제라도
+    // 순서가 안 맞으면 남의 과제 카드를 강제로 내는 경우와 똑같이 위험하다.
+    const dangerousForOwner = t.owner===p.id && !taskOrderOK(t);
+    if(t.owner===p.id && !dangerousForOwner) continue; // 본인 과제이고 순서도 맞음 — 안전
     if(danger===null || p.commCard.value>danger) danger=p.commCard.value;
   }
   return danger;
