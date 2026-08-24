@@ -1,0 +1,1668 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>스페이스 크루: 나인 행성 탐사 — 솔로 모드 v0.115</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0a0d16; --bg2:#121729; --bg3:#1a2038; --edge:#2a3358;
+  --ink:#e9edf7; --muted:#8b93b0; --faint:#5c6489;
+  --pink:#ef5da8; --blue:#4f9dff; --green:#4fd18a; --amber:#ffb54a; --gold:#d9b34a;
+  --bad:#ff5c6c; --good:#4fd18a;
+}
+*{box-sizing:border-box;}
+html,body{height:100%;margin:0;padding:0;background:var(--bg);color:var(--ink);
+  font-family:'Space Grotesk',system-ui,sans-serif; overflow:hidden; position:fixed; inset:0; width:100%;}
+#stars{position:fixed;inset:0;z-index:0;pointer-events:none;}
+#app{position:relative;z-index:1;max-width:560px;height:100%;margin:0 auto;padding:10px 10px 8px;
+  display:flex;flex-direction:column;overflow-y:auto;overflow-x:hidden;}
+
+h1,h2,h3{font-weight:700;margin:0;}
+.eyebrow{font-family:'IBM Plex Mono',monospace;letter-spacing:.14em;text-transform:uppercase;
+  font-size:11px;color:var(--faint);}
+.mono{font-family:'IBM Plex Mono',monospace;}
+
+/* header */
+header.top{display:flex;justify-content:space-between;align-items:center;
+  padding:6px 4px 8px;border-bottom:1px solid var(--edge);margin-bottom:8px;flex-shrink:0;}
+header.top .title{font-size:18px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+header.top .title small{display:block;color:var(--faint);font-size:10px;font-family:'IBM Plex Mono',monospace;letter-spacing:.1em;margin-top:1px;}
+.pill{display:inline-block;padding:3px 10px;border-radius:20px;background:var(--bg3);
+  border:1px solid var(--edge);font-size:12px;color:var(--muted);font-family:'IBM Plex Mono',monospace;}
+.ver-tag{display:inline-block;color:#3a2a0a;background:linear-gradient(90deg,var(--gold),#f0cd8a);
+  font-size:10px;font-family:'IBM Plex Mono',monospace;font-weight:700;letter-spacing:0;
+  vertical-align:middle;padding:2px 7px;border-radius:8px;}
+
+/* buttons */
+button{font-family:'Space Grotesk',sans-serif;cursor:pointer;border-radius:10px;border:1px solid var(--edge);
+  background:var(--bg3);color:var(--ink);padding:9px 16px;font-size:14px;transition:.15s;}
+button:hover:not(:disabled){border-color:var(--faint);transform:translateY(-1px);}
+button:disabled{opacity:.35;cursor:not-allowed;}
+button.primary{background:linear-gradient(135deg,var(--blue),#2f6fdb);border:none;color:#fff;font-weight:600;}
+button.ghost{background:transparent;}
+button.small{padding:5px 10px;font-size:12px;}
+
+/* mission grid */
+#missionGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;}
+.mcard{background:var(--bg2);border:1px solid var(--edge);border-radius:14px;padding:12px;cursor:pointer;transition:.15s;}
+.mcard:hover{border-color:var(--blue);transform:translateY(-2px);}
+.mcard.done{border-color:var(--green);}
+.mcard .num{font-family:'IBM Plex Mono',monospace;font-size:22px;color:var(--gold);}
+.mcard .tag{font-size:11px;color:var(--muted);margin-top:6px;min-height:28px;}
+.mcard .tokens{display:flex;gap:4px;margin-top:8px;flex-wrap:wrap;}
+.tok{font-family:'IBM Plex Mono',monospace;font-size:10px;background:var(--bg3);border:1px solid var(--edge);
+  border-radius:6px;padding:1px 5px;color:var(--amber);}
+.mcard .check{float:right;color:var(--green);font-size:14px;}
+
+/* panels */
+.panel{background:var(--bg2);border:1px solid var(--edge);border-radius:14px;padding:10px;margin-bottom:8px;}
+.banner{background:var(--bg3);border:1px solid var(--edge);border-left:3px solid var(--amber);
+  border-radius:10px;padding:6px 10px;font-size:12px;color:var(--muted);margin-bottom:8px;flex-shrink:0;}
+.banner b{color:var(--ink);}
+
+/* seats layout */
+.seats{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:8px;flex-shrink:0;}
+.seat{background:var(--bg2);border:1px solid var(--edge);border-radius:12px;padding:6px 4px;text-align:center;position:relative;}
+.seat.active{border-color:var(--blue);box-shadow:0 0 0 2px rgba(79,157,255,.25);}
+.seat.commander::before{content:"★";position:absolute;top:4px;left:6px;color:var(--gold);font-size:11px;}
+.seat .name{font-weight:600;font-size:11.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.seat .sub{font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:var(--faint);margin-top:1px;}
+.seat .wins{margin-top:3px;font-size:10.5px;color:var(--muted);}
+.seat .commflag{margin-top:3px;font-size:9.5px;color:var(--green);}
+.seat .commflag.off{color:var(--faint);}
+.seat.just-acted{animation:seatPulse .5s ease-out;}
+@keyframes seatPulse{
+  0%{box-shadow:0 0 0 0 rgba(240,205,138,.65);}
+  100%{box-shadow:0 0 0 9px rgba(240,205,138,0);}
+}
+
+/* porthole trick zone */
+.porthole{position:relative;width:100%;flex:1 1 auto;min-height:80px;max-height:170px;border-radius:18px;
+  background:radial-gradient(ellipse at center,#161c34 0%,#0c1022 75%);
+  border:1px solid var(--edge);display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:8px;overflow:hidden;}
+.porthole::after{content:"";position:absolute;inset:0;border-radius:18px;
+  box-shadow:inset 0 0 40px rgba(79,157,255,.08);pointer-events:none;}
+.trickslot{width:52px;height:74px;border-radius:8px;border:1.5px dashed var(--edge);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:10px;color:var(--faint);
+  font-family:'IBM Plex Mono',monospace;position:relative;}
+.trickslot .who{position:absolute;bottom:-15px;font-size:9.5px;color:var(--muted);white-space:nowrap;}
+.trickslot.just-played .card{animation:cardEnter .34s cubic-bezier(.22,.85,.32,1);transform-origin:top center;}
+@keyframes cardEnter{
+  0%{transform:translateY(-58px) scale(.92);opacity:0;}
+  70%{transform:translateY(4px) scale(1.03);opacity:1;}
+  100%{transform:translateY(0) scale(1);opacity:1;}
+}
+
+/* cards — white/paper face like a real deck, overlapped in one row */
+.card{width:44px;height:64px;border-radius:7px;background:linear-gradient(160deg,#fffdf6,#efe9d6);
+  border:1px solid rgba(0,0,0,.18);box-shadow:0 3px 6px rgba(0,0,0,.45);
+  display:flex;flex-direction:column;justify-content:space-between;padding:3px 4px;font-family:'IBM Plex Mono',monospace;
+  font-weight:700;font-size:11px;flex:0 0 auto;cursor:pointer;transition:transform .12s ease,box-shadow .12s ease,margin .12s ease;
+  position:relative;user-select:none;margin-left:-18px;}
+.card:first-child{margin-left:0;}
+.card.big{width:50px;height:72px;font-size:12.5px;margin-left:-20px;}
+.card.big:first-child{margin-left:0;}
+.card:hover:not(.disabled){transform:translateY(-10px);z-index:5;}
+.card.disabled{filter:grayscale(.85) brightness(.6);cursor:not-allowed;}
+.card.selected{transform:translateY(-14px);box-shadow:0 0 0 2px var(--blue),0 8px 14px rgba(0,0,0,.5);z-index:6;}
+.card.hand-static{cursor:default;}
+.card.hand-static:hover{transform:none;}
+.card .top{align-self:flex-start;}
+.card .bot{align-self:flex-end;transform:rotate(180deg);}
+.card .icon{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:16px;opacity:.9;}
+.card.big .icon{font-size:19px;}
+.card.P{color:var(--pink);}
+.card.B{color:var(--blue);}
+.card.G{color:#1f8a52;}
+.card.Y{color:#b8860b;}
+.card.R{color:#7a5a10;background:linear-gradient(160deg,#fdf3d8,#f0d98a);}
+.card .taskdot{position:absolute;top:-7px;left:-7px;width:17px;height:17px;border-radius:50%;
+  font-size:10px;display:flex;align-items:center;justify-content:center;font-weight:700;
+  border:1.5px solid var(--bg2);z-index:2;line-height:1;}
+.card .taskdot.mine{background:var(--good);color:#04331c;}
+.card .taskdot.other{background:var(--bad);color:#3a0a10;}
+.cardback{width:30px;height:44px;border-radius:5px;background:repeating-linear-gradient(135deg,#1a2038,#1a2038 4px,#222a4a 4px,#222a4a 8px);
+  border:1px solid var(--edge);margin-left:-14px;}
+.cardback:first-child{margin-left:0;}
+.backrow{display:flex;justify-content:center;margin-top:6px;}
+
+/* hand — single overlapped row, no wrapping */
+#handRow{display:flex;justify-content:center;align-items:flex-end;gap:0;padding:14px 0 2px;overflow:visible;}
+
+/* tasks */
+.taskrow{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px;}
+.taskchip{background:var(--bg3);border:1px solid var(--edge);border-left:3px solid var(--edge);border-radius:10px;padding:5px 9px;
+  display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--ink);font-weight:600;}
+.taskchip.done{opacity:.4;text-decoration:line-through;}
+.taskchip .owner{font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--muted);font-weight:400;}
+.comm-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:6px;}
+.comm-grid button{min-width:0;width:100%;padding:6px 2px;font-size:11px;line-height:1.3;white-space:normal;
+  overflow:hidden;text-overflow:ellipsis;text-align:center;}
+.taskchip.P{color:var(--pink);border-left-color:var(--pink);}
+.taskchip.B{color:var(--blue);border-left-color:var(--blue);}
+.taskchip.G{color:#1f8a52;border-left-color:#1f8a52;}
+.taskchip.Y{color:#b8860b;border-left-color:#b8860b;}
+.taskchip.R{color:var(--gold);border-left-color:var(--gold);}
+button.task-pick-btn.P{color:var(--pink);border-color:var(--pink);}
+button.task-pick-btn.B{color:var(--blue);border-color:var(--blue);}
+button.task-pick-btn.G{color:#1f8a52;border-color:#1f8a52;}
+button.task-pick-btn.Y{color:#b8860b;border-color:#b8860b;}
+button.task-pick-btn.R{color:var(--gold);border-color:var(--gold);}
+
+/* comm */
+.commcard{display:inline-flex;flex-direction:column;align-items:center;gap:3px;}
+.commbadge{font-size:9px;color:var(--green);font-family:'IBM Plex Mono',monospace;}
+
+/* log */
+#log{max-height:70px;overflow-y:auto;font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--muted);
+  display:flex;flex-direction:column-reverse;flex-shrink:0;}
+#log div{padding:2px 0;border-bottom:1px solid rgba(255,255,255,.03);}
+#log div.win{color:var(--green);}
+#log div.fail{color:var(--bad);}
+#log div.sys{color:var(--faint);}
+
+
+/* modal */
+.modalbg{position:fixed;inset:0;background:rgba(4,6,14,.75);backdrop-filter:blur(3px);
+  display:flex;align-items:center;justify-content:center;z-index:50;padding:16px;}
+.modal{background:var(--bg2);border:1px solid var(--edge);border-radius:16px;padding:20px;max-width:440px;width:100%;}
+.modal h3{margin-bottom:10px;}
+.modal .opts{display:flex;flex-direction:column;gap:8px;margin-top:14px;}
+.modal .opts.row{flex-direction:row;justify-content:center;}
+.modal-log{max-width:480px;}
+.modal-log .modal-log-body{max-height:65vh;overflow-y:auto;font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--muted);
+  display:flex;flex-direction:column-reverse;margin-top:6px;}
+.modal-log .modal-log-body div{padding:4px 0;border-bottom:1px solid rgba(255,255,255,.05);}
+.modal-log .modal-log-body div.win{color:var(--green);}
+.modal-log .modal-log-body div.fail{color:var(--bad);}
+.modal-log .modal-log-body div.sys{color:var(--faint);}
+.logpanel{cursor:pointer;}
+.logpanel:active{opacity:.8;}
+.logpanel .eyebrow{display:flex;justify-content:space-between;align-items:center;}
+.logpanel .eyebrow .tap-hint{font-size:10px;color:var(--faint);text-transform:none;letter-spacing:0;}
+.modal-story{max-width:480px;}
+.modal-story .story-body{max-height:50vh;overflow-y:auto;color:var(--ink);line-height:1.6;font-size:14px;
+  padding-right:2px;white-space:pre-line;}
+.modal-story .story-check{display:flex;align-items:center;gap:8px;margin-top:16px;
+  font-size:13px;color:var(--muted);cursor:pointer;}
+.modal-story .story-check input{width:16px;height:16px;accent-color:var(--blue);cursor:pointer;}
+.title .mission-title-btn{cursor:pointer;border-bottom:1px dashed var(--faint);}
+.title .mission-title-btn:hover{color:var(--blue);}
+
+.footerbar{position:fixed;bottom:0;left:0;right:0;background:linear-gradient(0deg,var(--bg) 60%,transparent);
+  padding:16px 14px 10px;display:flex;justify-content:center;gap:10px;z-index:20;}
+
+.center{text-align:center;}
+.flexrow{display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
+.spacer{flex:1;}
+a.back{color:var(--faint);text-decoration:none;font-size:12px;font-family:'IBM Plex Mono',monospace;}
+a.back:hover{color:var(--ink);}
+</style>
+</head>
+<body>
+<canvas id="stars"></canvas>
+<div id="app"></div>
+
+<script>
+/* ============ STARFIELD ============ */
+(function(){
+  const c=document.getElementById('stars'),ctx=c.getContext('2d');
+  let w,h,stars=[];
+  function resize(){w=c.width=innerWidth;h=c.height=innerHeight;
+    stars=Array.from({length:120},()=>({x:Math.random()*w,y:Math.random()*h,r:Math.random()*1.3+.2,p:Math.random()*Math.PI*2,s:Math.random()*.02+.01}));}
+  resize();addEventListener('resize',resize);
+  function loop(t){ctx.clearRect(0,0,w,h);
+    for(const s of stars){s.p+=s.s;const a=.35+.5*Math.abs(Math.sin(s.p));
+      ctx.fillStyle=`rgba(200,215,255,${a})`;ctx.beginPath();ctx.arc(s.x,s.y,s.r,0,7);ctx.fill();}
+    requestAnimationFrame(loop);}
+  requestAnimationFrame(loop);
+})();
+
+/* ============ CONSTANTS ============ */
+const APP_VERSION='v0.117';
+const SUITS=['P','B','G','Y'];
+const SUIT_NAME={P:'분홍',B:'파랑',G:'초록',Y:'노랑',R:'로켓'};
+const SUIT_ICON={P:'◆',B:'▲',G:'■',Y:'●',R:'🚀'};
+const SUIT_COLOR={P:'var(--pink)',B:'var(--blue)',G:'#1f8a52',Y:'#b8860b',R:'var(--gold)'};
+function suitSpan(suit,text){return `<span style="color:${SUIT_COLOR[suit]};font-weight:600;">${text}</span>`;}
+function cardSpan(card){return suitSpan(card.suit,`${SUIT_NAME[card.suit]} ${card.value}`);}
+const PLAYERS=[
+  {id:0,name:'나 (지휘 후보)',isHuman:true},
+  {id:1,name:'AI-리라',isHuman:false},
+  {id:2,name:'AI-오리온',isHuman:false},
+  {id:3,name:'AI-베가',isHuman:false},
+];
+const MAXTRICKS=10;
+
+function M(id,tasks,tokens,special,desc){return{id,tasks,tokens:tokens||[],special:special||null,desc:desc||''};}
+function S(type,params,desc){return{type,params:params||{},desc};}
+
+const MISSIONS=[
+M(1,1,[]),
+M(2,2,[]),
+M(3,2,['1','2']),
+M(4,3,[]),
+M(5,0,[],S('noWin',{},'커맨더가 지정한 대원은 이번 미션에서 트릭을 하나도 이기면 안 됩니다.')),
+M(6,3,['>','>>']),
+M(7,3,['Ω']),
+M(8,3,['1','2','3']),
+M(9,0,[],S('colorOne',{},'값이 1인 색깔 카드(로켓 제외)가 트릭을 이겨야 합니다.')),
+M(10,4,[]),
+M(11,4,['1'],S('noComm',{},'커맨더가 지정한 대원은 이번 미션에서 무전을 사용할 수 없습니다.')),
+M(12,4,['Ω'],S('randomPass',{},'첫 트릭 후 각 대원은 오른쪽 대원에게서 무작위 카드 1장을 받습니다.')),
+M(13,0,[],S('rocketsAny',{},'크루는 로켓 카드 1~4 각각으로 트릭을 이겨야 합니다 (순서 무관).')),
+M(14,4,['>','>>','>>>']),
+M(15,4,['1','2','3','4']),
+M(16,0,[],S('noNine',{},'크루는 9로 이기는 트릭이 있으면 안 됩니다.')),
+M(17,2,[],S('noNine',{},'크루는 9로 이기는 트릭이 있으면 안 됩니다.')),
+M(18,5,[],S('disruption',{from:3},'3번째 트릭 전까지 무전을 사용할 수 없습니다.')),
+M(19,5,['1'],S('disruption',{from:3},'3번째 트릭 전까지 무전을 사용할 수 없습니다.')),
+M(20,2,[],S('assignAll',{},'커맨더가 예/아니오를 물은 뒤, 한 명에게 모든 과제를 맡깁니다.')),
+M(21,5,['1','2']),
+M(22,5,['>','>>','>>>','>>>>']),
+M(23,5,['1','2','3']),
+M(24,6,[]),
+M(25,6,['>','>>']),
+M(26,0,[],S('twoTricksValue1',{},'값이 1인 카드로 트릭을 두 번 이겨야 합니다.')),
+M(27,3,[],S('assignAll',{},'커맨더가 예/아니오를 물은 뒤, 한 명에게 모든 과제를 맡깁니다.')),
+M(28,6,['1','Ω']),
+M(29,0,[],S('balance',{},'한 대원이 다른 대원보다 트릭을 2번 이상 더 이기면 안 됩니다.')),
+M(30,6,['>','>>','>>>']),
+M(31,6,['1','2','3']),
+M(32,7,[]),
+M(33,0,[],S('exactlyOne',{},'지정된 대원은 정확히 트릭 1번을 이겨야 하며, 로켓으로는 안 됩니다.')),
+M(34,0,[],S('balanceFirstLast',{},'승수 격차 2 이상 금지 + 지정된 대원이 첫 트릭과 마지막 트릭을 이겨야 합니다.')),
+M(35,7,['>','>>','>>>']),
+M(36,7,['1','2']),
+M(37,4,[],S('assignAll',{},'커맨더가 예/아니오를 물은 뒤, 한 명에게 모든 과제를 맡깁니다.')),
+M(38,8,[],S('disruption',{from:4},'4번째 트릭 전까지 무전을 사용할 수 없습니다.')),
+M(39,8,['>','>>','>>>']),
+M(40,8,['1','2','3']),
+M(41,0,[],S('firstLastOnly',{},'지정된 대원은 첫 트릭과 마지막 트릭만 이겨야 하며, 로켓으로는 안 됩니다.')),
+M(42,9,[]),
+M(43,9,[]),
+M(44,0,[],S('rocketsOrder',{},'크루는 로켓 카드를 1→2→3→4 순서대로 트릭에서 이겨야 합니다.')),
+M(45,9,['>','>>','>>>']),
+M(46,0,[],S('allPink',{},'분홍 9를 가진 대원의 왼쪽 대원이 모든 분홍 카드 트릭을 이겨야 합니다.')),
+M(47,10,[]),
+M(48,3,['Ω'],S('lastInLastTrick',{},'마지막 과제(Ω)는 반드시 미션의 마지막 트릭에서 완수해야 합니다.')),
+M(49,10,['>','>>','>>>']),
+M(50,0,[],S('roles',{},'A는 1~4번째 트릭 중에만, B는 마지막 트릭에서만 이길 수 있습니다. (수동 판정 참고용)')),
+];
+/* 미션 카드 뒷면 스토리(설명서 PDF의 서사 텍스트를 한글로 옮긴 것). 게임 규칙에
+   해당하는 문장은 이미 위 MISSIONS 배열의 special.desc / tasks / tokens 로 구현돼
+   있으므로, 여기서는 그 규칙이 어떤 상황을 나타내는지 몰입감 있게 설명한다. */
+const MISSION_STORY={
+1:'축하합니다! 당신은 인류 최대의 모험, "미지의 9번째 행성 탐사"의 개척자로 선발되었습니다. 최종 시험을 치를 훈련장에 도착하자마자, 첫 번째 훈련 단계인 "팀워크 훈련"이 시작됩니다.',
+2:'당신들은 완벽하게 호흡이 맞습니다. 이른바 "동조율"이라 불리는 정신적 유대감은 성공적인 협력을 예고합니다. 이제 2, 3단계 훈련인 무중력 적응과 장비 조작 훈련이 시작됩니다.',
+3:'다음은 에너지 공급과 비상 우선순위 판단 훈련입니다. 이 과정을 이해하고 적용하려면 높은 수준의 논리적 사고가 필요합니다. 여기서는 수학적 능력이 도움이 됩니다.',
+4:'마지막 훈련 단계는 우주복의 보조 시스템, 제어 모듈 재조정, 통신기 방향 재설정입니다. 이 과정을 마치면 드디어 진짜 임무가 시작됩니다!',
+5:'이런, 큰일입니다! 대원 중 한 명이 몸이 좋지 않아 침대에 누워있습니다. 모두 카드를 확인한 후, 커맨더가 컨디션을 묻습니다. "좋음" 또는 "나쁨"으로만 답할 수 있습니다. 커맨더는 그 대답을 토대로 누가 아픈지 판단합니다. 아픈 대원은 트릭을 단 한 번도 이겨서는 안 됩니다.',
+6:'이 작은 위기를 넘긴 후, 마지막 훈련 단계가 필요합니다. 우주에서는 다양한 예기치 못한 상황이 발생할 수 있기에, 통신 불능 구역 상황이 시뮬레이션됩니다. 이는 통신이 제한된 상태에서 작업하는 능력을 시험할 것입니다.',
+7:'드디어 모험이 시작됩니다! 10-9-8-7-6-5-4-3-2-1, 발사! 엄청난 힘이 좌석에 몸을 밀어붙입니다. 이제 돌이킬 수 없습니다. 귀를 먹먹하게 하는 굉음과 함께 지면을, 조국을, 대륙을, 그리고 행성을 떠납니다.',
+8:'달 궤도에 도달하여 무중력 상태가 됩니다. 형언할 수 없는 기분입니다. 시험이 계속되는 와중에도 기쁨이 벅차오릅니다. 지금까지 당신의 모든 것이었던 지구를 돌아보니, 이제는 엄지손가락 하나로 가려질 만큼 작게 보입니다.',
+9:'경보가 울립니다! 작은 금속 조각이 전자장비에 끼어버렸습니다. 회로기판이 손상되지 않도록 하려면 안정된 손놀림이 필요합니다. 값이 1인 카드가 반드시 트릭을 이겨야 합니다.',
+10:'회로를 고친 뒤, 이제 달을 뒤로하고 떠날 준비가 되었습니다. 지구에 상태를 보고하고, 모든 제어·감시 시스템을 가동한 뒤 엔진에 점화합니다. 이것은 당신에게는 물론 인류에게도 위대한 도약이 될 것입니다.',
+11:'레이더가 앞쪽에 밀집된 소행성 지대를 감지합니다. 커맨더는 필요한 항로 재계산을 맡을 대원을 지정합니다. 이 임무는 극도의 집중력을 요구하기 때문에, 이 대원은 통신을 사용할 수 없습니다.',
+12:'소행성 근처를 아슬아슬하게 통과하며 긴장한 나머지, 서류 작업이 뒤죽박죽되어 몇 분간 혼란이 발생합니다. 첫 번째 트릭이 끝난 직후, 모두 오른쪽 대원에게서 무작위 카드 한 장을 받아야 합니다. 이후 평소대로 진행합니다.',
+13:'항로를 변경했지만 약간의 손상을 입었습니다. 제어 모듈에 추진 장치 이상이 표시됩니다. 문제를 정확히 찾아내기 위해 모든 추진기에 대해 추진 시험을 실시하세요. 로켓 카드 전부로 트릭을 이겨야 합니다.',
+14:'화성에 접근하며, 태양계에서 가장 높은 화산인 올림푸스 몬스를 목격합니다. 사진을 찍은 뒤, 화성의 두 위성인 포보스와 데이모스도 촬영합니다. 안타깝게도 행성이 가까워지며 통신에 방해가 생겨 통신 불능 구역이 발생합니다.',
+15:'화성과 그로 인한 통신 방해를 뒤로하고, 초콜릿바를 꿈꾸며 잠시 여유를 즐깁니다. 그런데 갑자기 충돌 경보가 울리고 소행성에 피격당합니다. 즉시 손상된 네 개의 모듈을 밀폐하고 수리를 시작하세요.',
+16:'충격은 손상보다 심했지만, 대부분은 복구했습니다. 다만 우주복의 생명유지 장치를 관리하는 9번 제어 모듈이 충돌로 심각하게 손상되어 고장 났습니다. 값이 9인 카드로는 트릭을 이길 수 없습니다.',
+17:'9번 제어 모듈의 손상이 심해 수리가 예상보다 오래 걸리고 있습니다. 동시에 항로도 감시하고 지구에 상황을 보고해야 합니다. 여전히 값이 9인 카드로는 트릭을 이길 수 없습니다.',
+18:'먼지 구름 속을 지나며 목성으로 항로를 잡습니다. 통신 모듈이 적응하는 과정에서 처음에는 실패하지만, 잠시 후 놀랍도록 양호한 연결 상태를 보입니다. 두 번째 트릭부터 비로소 통신을 사용할 수 있습니다.',
+19:'먼지 구름 속에 오래 머물수록 통신 모듈의 상태가 더 이상해집니다. 선명했다가 전혀 알아들을 수 없는 상태를 오갑니다. 통신 불능 상태가 점점 길어집니다. 세 번째 트릭이 시작되기 전까지는 통신을 사용할 수 없습니다.',
+20:'마침내 먼지 구름이 걷히고 통신 모듈도 정상으로 돌아옵니다. 눈앞에 장엄한 가스 행성 목성이 펼쳐집니다. 감탄도 잠시, 손상된 레이더 센서 두 개를 발견합니다. 커맨더가 누가 과제를 맡고 수리를 진행할지 정합니다.',
+21:'수리를 마친 뒤, 구름 탓에 목성에 너무 가까워졌음을 알게 됩니다. 약 2.5배에 달하는 목성의 중력이 항로를 바꾸고 있습니다. 목성의 인력을 극복하고 최적의 탈출 지점에 도달하기 위해 안간힘을 씁니다. 통신 불능 구역조차 거의 신경 쓰지 못할 정도입니다.',
+22:'목성의 중력권을 벗어나자마자 갑자기 기온이 급강하합니다. 모든 제어 시스템에서 경보가 울려 즉시 우주복을 착용합니다. 조절 모듈이 겨우겨우 변화에 맞춰갑니다. 전면적인 시스템 고장을 막기 위해 전력을 다른 모듈로 하나씩 재분배하세요.',
+23:'급격한 기온 하강의 원인을 조사하는 동안 대부분의 모듈은 비상 전력으로 운영됩니다. 목성의 위성 중 하나인 칼리스토를 지난 뒤, 서리 지대를 벗어난 듯 기온이 안정됩니다. 대기 중이던 모듈들을 다시 가동하세요. 과제 카드를 뽑기 전, 과제 타일 두 개의 위치를 바꿀 수 있습니다.',
+24:'예상치 못한 사고로 작업이 뒤죽박죽되었습니다. 수리할 것은 많은데 다들 무질서하게 달려들려 합니다. 체계적으로 진행하기 위해 커맨더가 나서서 계획을 세웁니다. 커맨더가 개별 과제를 나눠줍니다.',
+25:'토성에 도착해, 이 고리 행성을 둘러싼 암석과 얼음 띠에 감탄합니다. 계기판을 제대로 살피지도 못한 채 이 웅장한 광경에 넋을 잃습니다. 다행히 통신 불능 구역 덕분에 이 감상의 시간을 방해받지 않습니다.',
+26:'넋을 잃고 있던 중 커다란 굉음에 정신이 번쩍 듭니다. 토성 고리에서 떨어져 나온 암석 두 조각이 선체에 구멍을 냈습니다. 자동 시스템이 즉시 해당 구역을 밀폐합니다. 손상을 키우지 않도록 조심스럽게 암석을 제거해야 합니다. 값이 1인 카드 두 장이 각각 트릭을 이겨야 합니다.',
+27:'암석은 선체뿐 아니라 자기력 보정 장치도 손상시켰습니다. 당장 급한 문제는 아니지만, 귀환하려면 반드시 수리해야 합니다. 커맨더가 누가 수리를 맡을지 정합니다.',
+28:'계기에 유난히 높은 수준의 우주 방사선이 감지됩니다. 비행을 계속하지만 무전 메시지가 아예 도착하지 않거나 심하게 지연되어 수신됩니다. 원활한 작업이 불가능한 상태입니다. 세 번째 트릭이 시작되기 전까지는 통신을 사용할 수 없습니다.',
+29:'통신 모듈의 손상이 예상보다 심각합니다. 수리를 위해서는 함께 정밀하게 일련의 시험과 조정을 수행해야 합니다. 어느 순간에도 한 대원이 다른 대원보다 트릭을 2번 이상 더 이겨서는 안 됩니다. 통신도 계속 방해받습니다.',
+30:'두 번째 수리 단계는 잠시 미뤄둡니다. 천왕성으로 직행하고 있기 때문입니다. 매끈하고 창백한 푸른 표면이 마치 인공물처럼 보입니다. 그 매혹적인 광경에서 눈을 떼고 통신 수리를 마무리합니다. 두 번째 트릭부터 비로소 통신을 사용할 수 있습니다.',
+31:'천왕성에서 서서히 멀어지던 중, 지구로부터 천왕성 위성들의 데이터를 수집하라는 메시지를 받습니다. 통신 방해 탓에 이미 늦어서, 27개 위성 중 로절린드, 벨린다, 퍽 세 개만 관측할 수 있었습니다. 지금은 이 정도로 만족해야 합니다.',
+32:'좋은 여건에도 불구하고, 오랜 시간 함께 여행하면서 인간적인 면모들이 하나둘 드러나기 시작합니다. 격한 충돌을 피하기 위해 모두 각자의 업무에 몰두합니다. 커맨더가 나서서 개별 과제를 나눠줍니다.',
+33:'해치 하나가 고장 나서 수리가 필요합니다. 하지만 선외로 나가는 것은 한 사람을 위험에 빠뜨립니다. 모두 카드를 확인한 뒤, 커맨더가 각자에게 준비가 되었는지 묻습니다. "예" 또는 "아니오"로만 답할 수 있습니다. 커맨더는 그중 한 대원을 선정합니다. 선정된 대원은 정확히 트릭을 한 번 이겨야 하며, 로켓 카드로는 이길 수 없습니다.',
+34:'넵튠이 눈앞에 보이기 시작할 무렵, 갑자기 선체가 흔들립니다. 제어권을 잃지 않도록 안정화 장치를 주시하세요. 커맨더는 중력 모듈을 재조정해야 합니다. 어느 순간에도 한 대원이 다른 대원보다 트릭을 2번 이상 더 이겨서는 안 되며, 커맨더는 반드시 첫 트릭과 마지막 트릭을 이겨야 합니다.',
+35:'흥분 속에 태양계의 마지막 외행성, 얼음 거인 해왕성에 도달합니다. 짙은 푸른빛에 전율이 입니다. 해왕성을 지나던 중 지구로부터 새로운 메시지를 받습니다. 우주선 알파5호가 해왕성 궤도를 돌고 있는데 센서가 손상되었다고 합니다. 위치를 찾아 수리하세요.',
+36:'수많은 비상사태와 책임, 불확실함 속에서 모두가 지쳐있습니다. 흔치 않은 평온한 순간을 이용해 서로에 대해 더 알아가는 시간을 갖습니다. 마음의 짐을 덜어낸 채, 다시 앞에 놓인 과제에 전념합니다. 커맨더가 개별 과제를 나눠줍니다.',
+37:'왜소행성 명왕성에 도착합니다. 오래전이었다면 이곳이 9번째 행성이었을 것입니다. 부모님이 천문학을 설명해주시던 어린 시절의 기억을 떠올리며, 시간이 얼마나 많은 것을 바꾸는지 되새깁니다. 그럼에도 우주선은 항로를 유지해야 합니다. 커맨더가 누가 이를 맡을지 정합니다.',
+38:'태양계의 경계인 헬리오포즈에 도달합니다. 계산이 맞다면 9번째 행성이 멀지 않았을 것입니다. 계기가 흔들리자 자리에서 벌떡 일어날 뻔합니다. 하지만 안타깝게도 잠깐의 깜빡임일 뿐입니다. 세 번째 트릭이 시작되기 전까지는 통신을 사용할 수 없습니다.',
+39:'잠깐! 지금 모듈들이 감지한 수치는 정말로 거대한 천체가 아니고서는 설명될 수 없습니다. 그 영향이 어찌나 큰지 무선 신호마저 끊어질 정도입니다. 계기를 재보정하여 그 정체가 무엇인지 알아내세요.',
+40:'불확실한 마음으로 그 천체에 다가갑니다. 명왕성의 또 다른 위성일까요? 아닙니다, 드디어 찾아냈습니다! 9번째 행성입니다! 표면 스캔 결과 단단한 지각이 있는 것으로 보입니다. 즉 가스 행성이 아니라 걸어 다닐 수 있는 행성이라는 뜻입니다. 과제 카드를 뽑기 전, 타일이 없는 카드로 타일 하나를 옮길 수 있습니다.',
+41:'엔진을 조정하며 낯선 지표 환경에서의 착륙을 준비합니다. 모두 카드를 확인한 뒤 커맨더가 각자에게 준비 상태를 묻습니다. "예" 또는 "아니오"로만 답합니다. 커맨더가 한 명을 선정합니다. 이 대원은 오직 첫 트릭과 마지막 트릭만 이겨야 합니다. 위치 보정에는 추진기만 사용하므로, 두 트릭 모두 로켓 카드로는 이길 수 없습니다.',
+42:'행성은 극도로 춥고 척박하지만 거주 가능해 보입니다. 계기로 감지되지 않는 듯한 구역을 발견합니다. 이 이상 현상에 가까워질수록 측정 오류가 점점 뚜렷해집니다. 눈앞에 펼쳐진 것은 지금까지의 과학 지식을 뛰어넘습니다. 그나마 다행히 멀어지면 수치가 정상으로 돌아오기에, 현상의 범위를 대략적으로 좁힐 수 있습니다.',
+43:'과학을 위해 더 가까이 다가갑니다. 이상 현상에 접근할수록 중력의 법칙이 뒤집히는 듯하여, 바이브라늄 고리로 몸을 행성 표면에 고정해 안전을 확보합니다. 커맨더가 나머지 대원들을 고정시키고 개별 과제를 나눠줍니다. 결과는 단 하나의 결론만을 가리킵니다. 웜홀을 발견한 것입니다.',
+44:'지금까지 웜홀은 이론일 뿐이었습니다. 이제 그것이 마치 거대한 검은 기념비처럼, 이해할 수 없지만 엄청난 중력을 지닌 채 눈앞에 드리워 있습니다. 지구에 메시지를 보내고 도약을 위해 엔진을 준비합니다. 로켓 카드 각각이 순서대로(1→2→3→4) 트릭을 이겨야 합니다.',
+45:'그 효과는 압도적입니다! 좌석에 몸을 고정한 채, 마치 동시에 모든 곳에 존재하는 듯한 기분을 느낍니다. 색과 형태가 변하고, 빛은 마치 지각을 가진 존재처럼 소용돌이치며 당신을 감쌉니다. 정신을 잃지 않으려 계기판에 집중합니다.',
+46:'수많은 감각에 압도된 와중에도 위험에는 본능적으로 반응합니다. 도약 중 선내 주요 모듈이 갑자기 모두 꺼지자, 붉은 경고등이 당신을 몽롱한 상태에서 깨웁니다. 분홍색 9 카드를 가진 대원의 왼쪽에 앉은 대원이 모든 분홍색 카드 트릭을 이겨야 합니다. 분홍 9의 소유자를 밝히세요.',
+47:'인내심이 바닥나고 있습니다. 도약은 이제 현실과 상상을 구분할 수 없는 감옥처럼 느껴집니다. 몸은 10초도 더 버틸 수 없다고 외치지만, 정신은 그 10초가 실제로 얼마나 긴 시간인지 의문을 품습니다. 함께 초를 세다가 마침내 웜홀 밖으로 튕겨져 나옵니다.',
+48:'방향 감각을 잃은 채로도 극심한 온도 변화를 느낍니다. 견딜 수 없는 열기 속에서 첫 모듈들이 고장 나기 시작합니다. 조절된 우주복을 입고 있어도 몇 초 안에 의식을 잃을 것입니다. 서둘러 비상 프로토콜을 가동하고, 열 차폐막을 펼친 뒤, 열원으로부터 멀어져야 합니다. 오메가 과제는 반드시 마지막 트릭에서 완수해야 합니다.',
+49:'깨어나 보니 모든 것이 정상입니다. 하지만 지금 위치를 믿기 어렵습니다. 금성 궤도를 돌고 있는 것입니다! 웜홀은 9번째 행성과 2번째 행성을 직접 연결하고 있었습니다. 이것으로 극심한 더위도 설명이 됩니다. 금성은 태양에 훨씬 가깝기 때문입니다. 잠시 후에야 깨닫습니다. 이제 집으로 돌아갈 수 있습니다! 생명유지, 추진, 통신을 특히 주의하며 10개의 주요 모듈을 모두 점검하고 지구로 항로를 설정하세요.',
+50:'귀환은 쉽지 않습니다. 일부 모듈이 고장 났고 태양의 인력과도 씨름해야 합니다. 중력 편향을 이용해 도약을 만들어내세요. 그런 뒤 지구 접근을 시작하며 선내 모듈들을 제어하세요. 모두 카드를 확인합니다. 한 대원은 반드시 처음 네 트릭을, 다른 한 대원은 마지막 트릭만 이겨야 합니다. 나머지는 모두 중간 트릭들을 이겨야 합니다. 커맨더가 각자 선호를 물은 뒤, 함께 누가 어느 역할을 맡을지 정합니다.',
+};
+const RANK={'1':1,'2':2,'3':3,'4':4,'5':5,'>':1,'>>':2,'>>>':3,'>>>>':4,'Ω':999};
+const NEEDS_TARGET={noWin:1,noComm:1,exactlyOne:1,balanceFirstLast:1,firstLastOnly:1,roles:2};
+
+/* ============ STATE ============ */
+let G=null;
+let completed=new Set();
+let attempts={};
+let storyDismissed=new Set(); // 미션 ID들: "다시 표시하지 않기"를 체크한 미션 스토리 팝업
+
+/* ============ PERSISTENCE (autosave, like the Mighty game) ============ */
+const SAVE_KEY='crew_solo_save_v1';
+function _setReplacer(k,v){ if(v instanceof Set) return {__set:true, values:[...v]}; return v; }
+function _setReviver(k,v){ if(v && typeof v==='object' && v.__set) return new Set(v.values); return v; }
+
+let _saveTimer=null;
+function scheduleSave(){
+  if(_saveTimer) clearTimeout(_saveTimer);
+  _saveTimer=setTimeout(saveGame, 400);
+}
+function saveGame(){
+  const payload=JSON.stringify({G, completed:[...completed], attempts, storyDismissed:[...storyDismissed]}, _setReplacer);
+  try{ if(window.localStorage) localStorage.setItem(SAVE_KEY, payload); }catch(e){ /* autosave is best-effort; ignore failures (e.g. private browsing) */ }
+}
+function loadGame(){
+  let raw=null;
+  try{ if(window.localStorage) raw=localStorage.getItem(SAVE_KEY); }catch(e){}
+  if(!raw) return false;
+  try{
+    const data=JSON.parse(raw, _setReviver);
+    if(data.G!==undefined) G=data.G;
+    if(G && !Array.isArray(G.discardAll)) G.discardAll=[]; // backward-compat for saves from before card-counting was added
+    if(Array.isArray(data.completed)) completed=new Set(data.completed);
+    if(data.attempts) attempts=data.attempts;
+    if(Array.isArray(data.storyDismissed)) storyDismissed=new Set(data.storyDismissed); // backward-compat: absent on saves from before this feature
+    return true;
+  }catch(e){ return false; }
+}
+
+/* ---- manual export/import (파일 저장) ----
+   localStorage는 "이 게임 파일을 연 브라우저의 이 위치"에 묶여있어서, 새 버전
+   파일을 열거나 다른 브라우저/기기로 옮기면 이전 기록이 안 보일 수 있다. 이를
+   보완하기 위해 진행 상황을 JSON 파일로 내보내고, 다시 불러올 수 있게 한다. */
+function exportSave(){
+  const payload=JSON.stringify({G, completed:[...completed], attempts, storyDismissed:[...storyDismissed]}, _setReplacer);
+  const blob=new Blob([payload],{type:'application/json'});
+  const url=URL.createObjectURL(blob);
+  const d=new Date();
+  const stamp=`${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`;
+  const a=document.createElement('a');
+  a.href=url; a.download=`space-crew-save-${stamp}.json`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+function importSaveFromText(text){
+  try{
+    const data=JSON.parse(text,_setReviver);
+    if(data.completed===undefined && data.G===undefined) throw new Error('not a save file');
+    if(data.G!==undefined) G=data.G;
+    if(G && !Array.isArray(G.discardAll)) G.discardAll=[];
+    if(Array.isArray(data.completed)) completed=new Set(data.completed);
+    if(data.attempts) attempts=data.attempts;
+    if(Array.isArray(data.storyDismissed)) storyDismissed=new Set(data.storyDismissed);
+    saveGame();
+    render();
+    askConfirm('저장 파일을 불러왔습니다. 완료 기록이 복원됐습니다.');
+  }catch(e){
+    askConfirm('저장 파일을 읽지 못했습니다. 이 게임에서 내보낸 JSON 파일이 맞는지 확인해주세요.');
+  }
+}
+
+function freshDeck(){
+  let d=[];
+  SUITS.forEach(s=>{for(let v=1;v<=9;v++)d.push({suit:s,value:v});});
+  for(let v=1;v<=4;v++)d.push({suit:'R',value:v});
+  return d;
+}
+function shuffle(a){a=a.slice();for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
+function ckey(c){return c.suit+c.value;}
+function cardLabel(c){return SUIT_ICON[c.suit]+c.value;}
+
+function log(msg,cls){G.log.push({msg,cls:cls||''});render();}
+
+/* ============ SETUP ============ */
+function openMissionSelect(){
+  G=null;_logModalOpen=false;_storyModalState=null;render();
+}
+
+function startMission(id){
+  _logModalOpen=false;_storyModalState=null;
+  const mission=MISSIONS.find(m=>m.id===id);
+  attempts[id]=(attempts[id]||0)+1;
+  const deck=shuffle(freshDeck());
+  const hands=[[],[],[],[]];
+  deck.forEach((c,i)=>hands[i%4].push(c));
+  hands.forEach(h=>h.sort((a,b)=>{
+    const oa=a.suit==='R'?4:SUITS.indexOf(a.suit), ob=b.suit==='R'?4:SUITS.indexOf(b.suit);
+    return oa-ob || a.value-b.value;
+  }));
+  const commanderIndex=hands.findIndex(h=>h.some(c=>c.suit==='R'&&c.value===4));
+
+  G={
+    mission, attemptNo:attempts[id],
+    players:PLAYERS.map((p,i)=>({...p,hand:hands[i],tasks:[],commUsed:false,commCard:null,commTag:null,wins:0})),
+    commanderIndex,
+    pendingTasks:[], // {suit,value,owner,tokenTag,rank,done}
+    trick:{plays:[],ledSuit:null,lastPlayed:null},
+    trickNumber:1,
+    turn:commanderIndex,
+    phase:'intro', // intro -> targetPick -> taskPick -> distress -> comm -> play -> result
+    distressOffered:false,
+    log:[],
+    targets:{},
+    achieveState:{}, // free-form per-special tracking
+    result:null,
+    discardAll:[], // every card played so far this mission (across all tricks) — public info, used for card-counting risk estimates
+  };
+  log(`미션 ${id} 시작 (시도 #${G.attemptNo}). 로켓4 보유자: ${G.players[commanderIndex].name} → 커맨더.`,'sys');
+  advanceFromIntro();
+}
+
+// 손패를 그대로 공개하진 않지만(히든 정보 게임이므로), 이 특수 규칙 역할에
+// 자기 손이 유리한지/불리한지 정도의 대략적인 감(느낌)을 계산한다.
+// 로켓과 색깔 카드 중 높은 값(7 이상)은 "강함", 낮은 값(3 이하)은 "약함"으로
+// 취급해 대략적인 강도를 매긴다.
+function handStrengthLevel(pIdx){
+  const hand=G.players[pIdx].hand;
+  const rockets=hand.filter(c=>c.suit==='R').length;
+  const strongColor=hand.filter(c=>c.suit!=='R'&&c.value>=7).length;
+  const weakColor=hand.filter(c=>c.suit!=='R'&&c.value<=3).length;
+  const score=rockets*2+strongColor-weakColor*0.5;
+  if(score>=6) return 'strong';
+  if(score<=1) return 'weak';
+  return 'mid';
+}
+
+// 대상 지정(targetPick) 화면이 뜨기 *전에* AI들이 각자 자기 손의 대략적인
+// 감을 미리 무전으로 말해줘서, 커맨더 역(사용자)이 실제로 누구를 지정할지
+// 정할 때 참고할 수 있게 한다. 실제 지정은 여전히 사용자가 한다.
+function targetSuitabilityLine(pIdx){
+  const sp=G.mission.special;
+  const name=G.players[pIdx].name;
+  const level=handStrengthLevel(pIdx);
+  switch(sp.type){
+    case 'noWin':
+      if(level==='strong') return `${name}: 제 손에 강한 카드가 많아서, 트릭을 안 이겨야 하는 역할은 저한텐 위험할 것 같습니다.`;
+      if(level==='weak') return `${name}: 제 손은 비교적 약한 편이라 트릭을 피하기 수월할 것 같습니다.`;
+      return `${name}: 제 손은 애매합니다 — 확답 드리기 어렵네요.`;
+    case 'exactlyOne':
+      if(level==='strong') return `${name}: 이길 수 있는 카드가 많아서, 정확히 한 번만 이기는 역할은 조절이 어려울 수도 있습니다.`;
+      if(level==='weak') return `${name}: 이길 만한 카드가 마땅치 않아서 이 역할은 저한텐 부담스럽습니다.`;
+      return `${name}: 적당한 카드가 있어서 이 역할에 잘 맞을 것 같습니다.`;
+    case 'balanceFirstLast':
+    case 'firstLastOnly':
+      if(level==='strong') return `${name}: 강한 카드가 있어서 원하는 타이밍에 트릭을 이길 가능성이 있습니다.`;
+      if(level==='weak') return `${name}: 손이 약한 편이라 원하는 트릭을 이기는 게 쉽지 않을 것 같습니다.`;
+      return `${name}: 확답은 어렵지만 기회를 봐야 할 것 같습니다.`;
+    case 'roles':
+      if(level==='strong') return `${name}: 강한 카드가 많아서 어느 쪽 역할이든 이길 가능성은 있어 보입니다.`;
+      if(level==='weak') return `${name}: 손이 약한 편이라 어느 역할이든 이기기 쉽지 않을 것 같습니다.`;
+      return `${name}: 손이 애매해서 딱히 유불리를 말씀드리기 어렵네요.`;
+    case 'noComm':
+      return `${name}: 이 역할은 손패보다는 상황에 달려 있어서 딱히 유불리는 없습니다.`;
+    default:
+      return null;
+  }
+}
+
+function advanceFromIntro(){
+  const sp=G.mission.special;
+  if(sp && NEEDS_TARGET[sp.type]){
+    G.phase='targetPick';
+    G.players.forEach(p=>{
+      if(p.isHuman) return;
+      const line=targetSuitabilityLine(p.id);
+      if(line) log(line,'sys');
+    });
+    render();
+  } else {
+    beginTaskPick(); // renders internally once the resulting phase is settled
+  }
+}
+
+/* ---- target picking (human decides, representing crew consensus) ---- */
+function confirmTargets(ids){
+  const sp=G.mission.special;
+  if(sp.type==='roles'){ G.targets.roleA=ids[0]; G.targets.roleB=ids[1]; }
+  else { G.targets.main=ids[0]; }
+  log(`특수 규칙 대상 지정: ${ids.map(i=>G.players[i].name).join(', ')}`,'sys');
+  beginTaskPick();
+  render();
+}
+
+/* ---- task pool & distribution ---- */
+function buildTaskPool(){
+  const n=G.mission.tasks;
+  if(n===0)return [];
+  // pick n distinct suit/value combos not colliding, tag with tokens in order
+  const pool=[];
+  const used=new Set();
+  while(pool.length<n){
+    const s=SUITS[Math.floor(Math.random()*4)];
+    const v=1+Math.floor(Math.random()*9);
+    const k=s+v; if(used.has(k))continue; used.add(k);
+    pool.push({suit:s,value:v,owner:null,done:false,tokenTag:null,rank:null});
+  }
+  const toks=G.mission.tokens;
+  for(let i=0;i<toks.length && i<pool.length;i++){pool[i].tokenTag=toks[i];pool[i].rank=RANK[toks[i]];}
+  return pool;
+}
+
+function beginTaskPick(){
+  const sp=G.mission.special;
+  G.pendingTasks=buildTaskPool();
+  if(G.pendingTasks.length===0){ finishDistribution(); return; }
+  if(sp && sp.type==='assignAll'){
+    G.phase='assignAllPick';
+    render(); return;
+  }
+  // round robin starting at commander
+  G.pickQueue=[];
+  for(let i=0;i<G.pendingTasks.length;i++) G.pickQueue.push((G.commanderIndex+i)%4);
+  G.phase='taskPick';
+  processTaskPick();
+}
+
+function processTaskPick(){
+  if(!G.pickQueue.length){ finishDistribution(); return; }
+  const pIdx=G.pickQueue[0];
+  const player=G.players[pIdx];
+  const avail=G.pendingTasks.filter(t=>t.owner===null);
+  if(player.isHuman){ render(); return; } // wait for click
+  // AI heuristic: prefer a task whose exact card is in hand
+  let choice=avail.find(t=>player.hand.some(c=>c.suit===t.suit&&c.value===t.value));
+  if(!choice){
+    // else prefer suit AI holds most of
+    const counts={};avail.forEach(t=>counts[t.suit]=(counts[t.suit]||0)+1);
+    const suitPref=Object.keys(counts).sort((a,b)=>{
+      const ca=player.hand.filter(c=>c.suit===a).length, cb=player.hand.filter(c=>c.suit===b).length;
+      return cb-ca;
+    })[0];
+    choice=avail.find(t=>t.suit===suitPref)||avail[0];
+  }
+  assignTask(choice,pIdx);
+  G.pickQueue.shift();
+  setTimeout(processTaskPick,350);
+}
+
+function humanPickTask(idx){
+  if(G.phase!=='taskPick')return;
+  const t=G.pendingTasks[idx];
+  if(t.owner!==null)return;
+  assignTask(t,G.pickQueue[0]);
+  G.pickQueue.shift();
+  processTaskPick();
+}
+
+function assignTask(t,pIdx){
+  t.owner=pIdx;
+  G.players[pIdx].tasks.push(t);
+  log(`${G.players[pIdx].name} → 과제 획득: ${cardSpan(t)}${t.tokenTag?` [${t.tokenTag}]`:''}`,'sys');
+}
+
+function humanAssignAllPick(pIdx){
+  G.pendingTasks.forEach(t=>assignTask(t,pIdx));
+  finishDistribution();
+}
+
+function finishDistribution(){
+  G.phase='distress';
+  render();
+}
+
+/* ---- distress signal ---- */
+function skipDistress(){ G.distressOffered=true; startCommPhase(); }
+function useDistress(dir){
+  G.distressOffered=true;
+  const order=[0,1,2,3];
+  const give=order.map(i=> dir==='right'? (i+1)%4 : (i+3)%4 );
+  const passedCards={};
+  order.forEach(i=>{
+    const hand=G.players[i].hand;
+    let card;
+    if(G.players[i].isHuman){ card=G.humanDistressCard || hand.filter(c=>c.suit!=='R')[0]; }
+    else { const nonR=hand.filter(c=>c.suit!=='R'); card=nonR.sort((a,b)=>a.value-b.value)[0]; }
+    passedCards[i]=card;
+  });
+  order.forEach(i=>{
+    const card=passedCards[i];
+    const from=G.players[i];
+    from.hand=from.hand.filter(c=>!(c.suit===card.suit&&c.value===card.value));
+    const to=G.players[give[i]];
+    to.hand.push(card);
+  });
+  G.players.forEach(p=>p.hand.sort((a,b)=>{
+    const oa=a.suit==='R'?4:SUITS.indexOf(a.suit), ob=b.suit==='R'?4:SUITS.indexOf(b.suit);
+    return oa-ob||a.value-b.value;
+  }));
+  log(`구조 신호 사용: 전원이 ${dir==='right'?'오른쪽':'왼쪽'} 대원에게 카드 1장을 전달했습니다.`,'sys');
+  startCommPhase();
+}
+function humanPickDistressCard(card){ G.humanDistressCard=card; useDistress(G.distressDir||'right'); }
+
+/* ---- communication ---- */
+function startCommPhase(){
+  G.phase='comm';
+  // AI auto-communicate decision (once per mission attempt)
+  G.players.forEach((p,i)=>{
+    if(p.isHuman||p.commUsed)return;
+    if(!commAllowedNow())return;
+    // 위급 정보(남의 과제 카드를 그 수트의 유일한 패로 들고 있음)가 있다면
+    // 거의 반드시 알리도록 확률을 크게 높인다 — 이런 정보를 그냥 운으로
+    // 흘려보내면, 나중에 그 수트가 강제로 리드됐을 때 팀이 대비할 수 없다.
+    const commChance=hasUrgentCommOpportunity(p)?0.95:0.6;
+    if(Math.random()<commChance){
+      const pick=pickAiCommOption(p);
+      if(pick){
+        p.commCard=pick.card; p.commTag=pick.tag; p.commUsed=true;
+        log(`📡 ${p.name} 무전: ${cardSpan(pick.card)} (${tagLabel(pick.tag)})`,'sys');
+      }
+    }
+  });
+  render();
+}
+function eligibleCommCards(p){
+  const res=[];
+  SUITS.forEach(s=>{
+    const cs=p.hand.filter(c=>c.suit===s);
+    if(!cs.length)return;
+    if(cs.length===1){res.push({card:cs[0],tag:'single'});return;}
+    const hi=cs.reduce((a,b)=>b.value>a.value?b:a);
+    const lo=cs.reduce((a,b)=>b.value<a.value?b:a);
+    res.push({card:hi,tag:'high'});res.push({card:lo,tag:'low'});
+  });
+  return res;
+}
+function pickAiCommOption(p){
+  // 미션과 무관한 아무 수트 힌트보다, 아직 안 끝난 과제와 관련된 힌트를
+  // 우선적으로 고른다 — 같은 카드 자체가 과제 카드인 경우를 최우선으로,
+  // 그다음은 최소한 과제가 걸린 수트인 경우로 우선순위를 둔다.
+  const options=eligibleCommCards(p);
+  if(!options.length) return null;
+  const undone=G.pendingTasks.filter(t=>!t.done);
+  const exact=options.filter(o=>undone.some(t=>t.suit===o.card.suit && t.value===o.card.value));
+  if(exact.length){
+    // exact 중에서도 'single'(그 수트의 유일한 패)이 가장 위급하다 — 그
+    // 수트가 리드되면 선택의 여지 없이 강제로 이 과제 카드를 내야 하므로,
+    // 팀이 미리 알고 대비(그 수트를 리드하지 않거나, 그 카드를 안전하게
+    // 받아줄 트릭을 준비)할 수 있게 이 정보를 최우선으로 알린다.
+    const singleHits=exact.filter(o=>o.tag==='single');
+    const pool=singleHits.length?singleHits:exact;
+    return pool[Math.floor(Math.random()*pool.length)];
+  }
+  const suitMatch=options.filter(o=>undone.some(t=>t.suit===o.card.suit));
+  if(suitMatch.length) return suitMatch[Math.floor(Math.random()*suitMatch.length)];
+  // 남은 과제와 수트가 겹치는 힌트조차 없다면, 지금 당장은 딱히 도움이 안 되는
+  // 무전이다. 무전은 미션당 1회뿐이라 여기서 아무 수트나 골라 써버리면 정작
+  // 필요한 순간에 쓸 수 없게 된다 — 그냥 이번엔 넘기고 기회를 아낀다.
+  return null;
+}
+// 지금 이 순간, 이 대원이 남의(또는 아직 순서상 못 끝내는) 과제 카드를 어떤
+// 수트의 유일한 패로 들고 있는지 — 즉 그 수트가 리드되면 꼼짝없이 강제로
+// 내야 하는 "위급 정보"가 있는지 확인한다. 이런 정보는 팀 전체에 매우
+// 중요하므로, 무전 시도 확률 자체를 크게 높이는 데 쓴다.
+function hasUrgentCommOpportunity(p){
+  const options=eligibleCommCards(p);
+  const undone=G.pendingTasks.filter(t=>!t.done);
+  return options.some(o=>o.tag==='single' && undone.some(t=>t.suit===o.card.suit && t.value===o.card.value));
+}
+function tagLabel(t){return t==='high'?'최고':t==='low'?'최저':'유일';}
+function commAllowedNow(){
+  const sp=G.mission.special;
+  if(sp && sp.type==='disruption') return G.trickNumber>=sp.params.from;
+  return true;
+}
+function humanCommunicate(card,tag){
+  const p=G.players[0];
+  if(p.commUsed||!commAllowedNow())return;
+  p.commCard=card;p.commTag=tag;p.commUsed=true;
+  log(`📡 나 무전: ${cardSpan(card)} (${tagLabel(tag)})`,'win');
+  render();
+}
+function beginPlay(){
+  G.phase='play';
+  G.turn=(G.trickNumber===1)? G.commanderIndex : G.turn;
+  render();
+  maybeAIPlay();
+}
+
+/* ============ TRICK ENGINE ============ */
+function legalCards(hand,ledSuit){
+  if(!ledSuit)return hand.slice();
+  const have=hand.filter(c=>c.suit===ledSuit);
+  return have.length?have:hand.slice();
+}
+function trickLeaderOf(plays){
+  if(!plays.length)return null;
+  const led=plays[0].card.suit;
+  const rockets=plays.filter(p=>p.card.suit==='R');
+  if(rockets.length)return rockets.reduce((a,b)=>b.card.value>a.card.value?b:a).player;
+  const ledPlays=plays.filter(p=>p.card.suit===led);
+  return ledPlays.reduce((a,b)=>b.card.value>a.card.value?b:a).player;
+}
+
+function cardCannotWinAnymore(play,plays,ledSuit){
+  // true면: 이 카드는 이미 나온 카드들만 놓고 봐도 절대 이 트릭을 이길 수 없다.
+  // (앞으로 어떤 카드가 나오든 "이미 나온 카드"보다 순위가 낮아지진 않으므로,
+  //  아직 공개되지 않은 손패를 몰라도 안전하게 판단 가능한 공개 정보다.)
+  const c=play.card;
+  if(c.suit!=='R' && c.suit!==ledSuit) return true; // 리드 수트도 아니고 우주선도 아님 → 원천적으로 못 이김
+  const rockets=plays.filter(p=>p.card.suit==='R');
+  if(c.suit==='R') return rockets.some(p=>p!==play && p.card.value>c.value);
+  if(rockets.length) return true; // 우주선이 이미 나왔으면 일반 수트는 절대 못 이김
+  return plays.some(p=>p!==play && p.card.suit===ledSuit && p.card.value>c.value);
+}
+function checkEarlyFail(){
+  // 아직 트릭이 끝나기 전이라도, "지금까지 공개된 카드"만으로 이미 실패가
+  // 확정된 상태라면 남은 대원이 형식적으로 카드를 더 내게 하지 않고 즉시 종료한다.
+  const ledSuit=G.trick.ledSuit;
+  if(!ledSuit) return null;
+  for(const t of G.pendingTasks){
+    if(t.done) continue;
+    const cardPlay=G.trick.plays.find(p=>p.card.suit===t.suit && p.card.value===t.value);
+    if(!cardPlay) continue; // 이번 트릭에 아직 그 과제 카드가 나오지 않음
+    const ownerPlay=G.trick.plays.find(p=>p.player===t.owner);
+    if(!ownerPlay) continue; // 과제 주인이 아직 카드를 내지 않음 → 아직 알 수 없음
+    if(ownerPlay.player===cardPlay.player) continue; // 본인 과제 카드를 직접 낸 경우는 트릭이 끝나야 확정
+    if(cardCannotWinAnymore(ownerPlay,G.trick.plays,ledSuit)){
+      return `실패: ${cardSpan(t)} 과제는 ${G.players[t.owner].name}의 것인데, ${G.players[t.owner].name}가 이미 이 트릭에서 이길 수 없는 카드(${suitSpan(ownerPlay.card.suit,SUIT_ICON[ownerPlay.card.suit]+ownerPlay.card.value)})를 냈습니다.`;
+    }
+  }
+  return null;
+}
+
+function playCard(pIdx,card){
+  const p=G.players[pIdx];
+  p.hand=p.hand.filter(c=>!(c.suit===card.suit&&c.value===card.value));
+  G.trick.plays.push({player:pIdx,card});
+  G.trick.lastPlayed=pIdx;
+  G.discardAll.push(card);
+  if(G.trick.plays.length===1)G.trick.ledSuit=card.suit;
+  log(`${p.name}: ${suitSpan(card.suit,SUIT_ICON[card.suit]+card.value)} 플레이`,'');
+  if(p.commCard && p.commCard.suit===card.suit && p.commCard.value===card.value){
+    p.commCard=null; p.commTag=null; // reminder card discarded automatically
+  }
+  render();
+  if(G.trick.plays.length<4){
+    const earlyFail=checkEarlyFail();
+    if(earlyFail){ setTimeout(()=>endMission(false,earlyFail),400); return; }
+    G.turn=(pIdx+1)%4;
+    render();
+    setTimeout(maybeAIPlay,400);
+  } else {
+    setTimeout(resolveTrick,650);
+  }
+}
+
+function resolveTrick(){
+  const winner=trickLeaderOf(G.trick.plays);
+  const winCard=G.trick.plays.find(p=>p.player===winner).card;
+  G.players[winner].wins++;
+  log(`▶ 트릭 #${G.trickNumber} 승리: ${G.players[winner].name} (${suitSpan(winCard.suit,SUIT_ICON[winCard.suit]+winCard.value)})`,'win');
+
+  // check tasks contained in this trick
+  let failMsg=null;
+  for(const play of G.trick.plays){
+    const t=G.pendingTasks.find(t=>!t.done && t.suit===play.card.suit && t.value===play.card.value);
+    if(t){
+      if(t.owner!==winner){
+        failMsg=`실패: ${cardSpan(t)} 과제는 ${G.players[t.owner].name}의 것인데 ${G.players[winner].name}가 트릭을 이겼습니다.`;
+        break;
+      }
+      if(t.tokenTag){
+        const others=G.pendingTasks.filter(o=>o!==t && !o.done && o.tokenTag && o.tokenTag!=='Ω' && o.rank<t.rank);
+        if(t.tokenTag!=='Ω' && others.length){
+          failMsg=`실패: 과제 순서 위반 (${cardSpan(t)} [${t.tokenTag}]을(를) 너무 일찍 완수함).`;
+          break;
+        }
+        if(t.tokenTag==='Ω'){
+          const remaining=G.pendingTasks.filter(o=>o!==t && !o.done);
+          if(remaining.length){
+            failMsg=`실패: 마지막(Ω) 과제는 다른 모든 과제가 끝난 뒤에 완수해야 합니다.`;
+            break;
+          }
+        }
+      }
+      t.done=true;
+      log(`✔ 과제 완수: ${G.players[t.owner].name} — ${cardSpan(t)}`,'win');
+      if(G.mission.special && G.mission.special.type==='lastInLastTrick' && t.tokenTag==='Ω' && G.trickNumber!==MAXTRICKS){
+        failMsg=`실패: 마지막 과제는 반드시 마지막 트릭(#${MAXTRICKS})에서 완수해야 합니다.`;
+        break;
+      }
+    }
+  }
+  if(!failMsg) failMsg=checkSpecialAfterTrick(winner,winCard);
+
+  if(failMsg){ endMission(false,failMsg); return; }
+
+  const allDone=G.pendingTasks.length && G.pendingTasks.every(t=>t.done);
+  const freeWin=checkSpecialAchieved();
+  if(allDone || freeWin){ endMission(true,'모든 과제를 완수했습니다!'); return; }
+
+  // next trick
+  G.trick={plays:[],ledSuit:null,lastPlayed:null};
+  G.trickNumber++;
+  G.turn=winner;
+  if(G.trickNumber>MAXTRICKS){
+    // ran out of cards without completing (only relevant for freeform special missions)
+    endMission(false,'카드를 모두 소진했지만 목표를 달성하지 못했습니다.');
+    return;
+  }
+  // new trick communication opportunity
+  G.players.forEach(p=>{
+    if(p.isHuman||p.commUsed||!commAllowedNow())return;
+    const commChance=hasUrgentCommOpportunity(p)?0.95:0.25;
+    if(Math.random()<commChance){
+      const pick=pickAiCommOption(p);
+      if(pick){
+        p.commCard=pick.card;p.commTag=pick.tag;p.commUsed=true;
+        log(`📡 ${p.name} 무전: ${cardSpan(pick.card)} (${tagLabel(pick.tag)})`,'sys');
+      }
+    }
+  });
+  const human=G.players[0];
+  if(!human.commUsed && commAllowedNow()){
+    G.phase='comm';
+    render();
+  } else {
+    G.phase='play';
+    render();
+    maybeAIPlay();
+  }
+}
+
+function checkSpecialAfterTrick(winner,winCard){
+  const sp=G.mission.special;
+  const A=G.achieveState;
+  if(!sp)return null;
+  switch(sp.type){
+    case 'noWin':
+      if(winner===G.targets.main) return `실패: 지정된 대원(${G.players[G.targets.main].name})은 트릭을 이기면 안 됩니다.`;
+      break;
+    case 'noNine':
+      if(winCard.value===9) return `실패: 9로 트릭을 이겼습니다 (${G.players[winner].name}).`;
+      break;
+    case 'colorOne':
+      if(winCard.suit!=='R'&&winCard.value===1) A.colorOneDone=true;
+      break;
+    case 'rocketsAny':
+      A.rockets=A.rockets||new Set();
+      if(winCard.suit==='R') A.rockets.add(winCard.value);
+      break;
+    case 'rocketsOrder':
+      A.next=A.next||1;
+      if(winCard.suit==='R'){
+        if(winCard.value!==A.next) return `실패: 로켓은 반드시 1→2→3→4 순서로 이겨야 합니다.`;
+        A.next++;
+      }
+      break;
+    case 'twoTricksValue1':
+      A.count=A.count||0;
+      if(winCard.value===1) A.count++;
+      break;
+    case 'balance': case 'balanceFirstLast': {
+      const wins=G.players.map(p=>p.wins);
+      if(Math.max(...wins)-Math.min(...wins)>=2) return '실패: 대원 간 트릭 승수 격차가 2 이상 벌어졌습니다.';
+      if(sp.type==='balanceFirstLast'){
+        if(G.trickNumber===1 && winner!==G.targets.main) return `실패: 첫 트릭은 ${G.players[G.targets.main].name}가 이겨야 합니다.`;
+        if(G.trickNumber===MAXTRICKS && winner!==G.targets.main) return `실패: 마지막 트릭은 ${G.players[G.targets.main].name}가 이겨야 합니다.`;
+      }
+      break;
+    }
+    case 'exactlyOne': {
+      if(winner===G.targets.main){
+        if(winCard.suit==='R') return `실패: 지정된 대원은 로켓으로 트릭을 이기면 안 됩니다.`;
+        A.count=(A.count||0)+1;
+        if(A.count>1) return `실패: 지정된 대원은 정확히 트릭 1번만 이겨야 합니다.`;
+      }
+      break;
+    }
+    case 'firstLastOnly': {
+      if(winner===G.targets.main){
+        if(G.trickNumber!==1 && G.trickNumber!==MAXTRICKS) return `실패: 지정된 대원은 첫/마지막 트릭 외에는 이기면 안 됩니다.`;
+        if(winCard.suit==='R') return `실패: 지정된 대원은 로켓으로 이기면 안 됩니다.`;
+      }
+      break;
+    }
+    case 'allPink': {
+      if(A.designated===undefined){
+        const holder=G.players.findIndex(p=>p.hand.concat(G.trick.plays.map(x=>x.card)).some(c=>c.suit==='P'&&c.value===9));
+      }
+      if(A.designated===undefined) A.designated=computeAllPinkTarget();
+      if(winCard.suit==='P' && winner!==A.designated) return `실패: 분홍 카드로 이긴 트릭은 지정된 대원(${G.players[A.designated].name})이 가져가야 합니다.`;
+      break;
+    }
+    case 'roles': {
+      const {roleA,roleB}=G.targets;
+      if(winner===roleB && G.trickNumber!==MAXTRICKS) return `실패: B(${G.players[roleB].name})는 마지막 트릭에서만 이길 수 있습니다.`;
+      if(winner===roleA && G.trickNumber>4) return `실패: A(${G.players[roleA].name})는 1~4번째 트릭에서만 이길 수 있습니다.`;
+      break;
+    }
+  }
+  return null;
+}
+function computeAllPinkTarget(){
+  // find who currently holds pink 9 (in hand or already played) at mission start snapshot
+  for(let i=0;i<4;i++){
+    if(G.players[i].hand.some(c=>c.suit==='P'&&c.value===9)) return (i+3)%4;
+  }
+  // fallback: search play history
+  return (G.commanderIndex+3)%4;
+}
+function checkSpecialAchieved(){
+  const sp=G.mission.special;
+  if(!sp)return false;
+  const A=G.achieveState;
+  if(sp.type==='colorOne') return !!A.colorOneDone;
+  if(sp.type==='rocketsAny') return A.rockets && A.rockets.size===4;
+  if(sp.type==='rocketsOrder') return A.next===5;
+  if(sp.type==='twoTricksValue1') return (A.count||0)>=2;
+  if(sp.type==='noWin' || sp.type==='noNine' || sp.type==='balance' || sp.type==='balanceFirstLast'
+     || sp.type==='exactlyOne' || sp.type==='firstLastOnly' || sp.type==='allPink' || sp.type==='roles')
+    return G.trickNumber>=MAXTRICKS; // success if survived all tricks without violation
+  return false;
+}
+
+function endMission(success,msg){
+  G.phase='result';
+  G.result={success,msg};
+  log(success?`🎉 미션 성공! ${msg}`:`💥 미션 실패. ${msg}`, success?'win':'fail');
+  if(success) completed.add(G.mission.id);
+  render();
+}
+
+/* ---- special mid-flow triggers ---- */
+function afterFirstTrickHook(){
+  const sp=G.mission.special;
+  if(sp && sp.type==='randomPass' && G.trickNumber===2 && !G.achieveState.passed){
+    G.achieveState.passed=true;
+    for(let i=0;i<4;i++){
+      const from=G.players[(i+1)%4]; // right neighbor gives to i
+      if(!from.hand.length)continue;
+      const idx=Math.floor(Math.random()*from.hand.length);
+      const [card]=from.hand.splice(idx,1);
+      G.players[i].hand.push(card);
+    }
+    G.players.forEach(p=>p.hand.sort((a,b)=>{
+      const oa=a.suit==='R'?4:SUITS.indexOf(a.suit), ob=b.suit==='R'?4:SUITS.indexOf(b.suit);
+      return oa-ob||a.value-b.value;
+    }));
+    log('🔀 첫 트릭 후: 각자 오른쪽 대원에게서 무작위 카드 1장을 받았습니다.','sys');
+  }
+}
+
+/* ============ AI PLAY ============ */
+function maybeAIPlay(){
+  if(G.phase!=='play')return;
+  const p=G.players[G.turn];
+  if(p.isHuman)return;
+  const legal=legalCards(p.hand,G.trick.ledSuit);
+  const card=aiChooseCard(G.turn,legal);
+  setTimeout(()=>playCard(G.turn,card),500);
+}
+
+/* ---- full-information trick simulation (REMOVED) ----
+   이전에 AI가 모든 대원의 손패를 미리 아는 것처럼 "안전한 카드만" 골라 내던
+   로직은 실제로는 존재하지 않는 정보를 이용하는 치팅이라 제거함.
+   AI는 이제 지금까지 실제로 테이블에 나온 카드(공개 정보)만으로 판단한다. */
+
+/* ---- card counting (공개 정보만 사용) ----
+   전체 덱 구성은 고정돼 있고, "이미 낸 카드"와 "내 손패"는 공개 정보이므로
+   그 둘을 뺀 나머지가 상대 손에 있을 수 있는 카드다. 상대가 정확히 누가
+   뭘 들고 있는지는 모르지만, 몇 장이나 남아있는지는 셀 수 있다 — 이건
+   카드 게임에서 누구나 하는 정상적인 카드 카운팅이지 치팅이 아니다. */
+function remainingThreatCount(pIdx,card){
+  const mine=new Set(G.players[pIdx].hand.map(ckey));
+  const gone=new Set(G.discardAll.map(ckey));
+  let threat=0;
+  for(const c of freshDeck()){
+    const k=ckey(c);
+    if(k===ckey(card) && c.suit===card.suit && c.value===card.value) continue; // 후보 카드 자신
+    if(mine.has(k)) continue;   // 내 손패라 위협 아님
+    if(gone.has(k)) continue;   // 이미 나온 카드라 더는 위협 아님
+    if(card.suit==='R'){
+      if(c.suit==='R' && c.value>card.value) threat++;
+    } else {
+      if(c.suit===card.suit && c.value>card.value) threat++;
+      if(c.suit==='R') threat++; // 우주선은 무슨 수트든 이김
+    }
+  }
+  return threat;
+}
+
+// 이 과제(t)를 지금 완수해도 순서 규칙(tokenTag/rank)에 어긋나지 않는지 확인.
+// myHits(내 과제)와 foreignHits(남의 과제) 양쪽 판단에서 공용으로 쓴다.
+function taskOrderOK(t){
+  return !t.tokenTag || (t.tokenTag==='Ω'
+    ? G.pendingTasks.filter(o=>o!==t&&!o.done).length===0
+    : !G.pendingTasks.some(o=>o!==t&&!o.done&&o.tokenTag&&o.tokenTag!=='Ω'&&o.rank<t.rank));
+}
+
+// 공개된 무전 정보를 이용해, 이 수트를 리드하면 위험한 상황이 벌어지는지
+// 확인한다. 어떤 대원이 "이 수트의 유일한 패"라고 무전으로 밝혔는데, 그
+// 카드가 마침 (본인 것이 아닌) 남의 과제 카드라면 — 그 수트를 리드하는
+// 순간 그 대원은 선택의 여지 없이 그 카드를 낼 수밖에 없다. 만약 그 값이
+// 충분히 높으면(특히 리드하는 카드보다 높으면) 과제 주인이 아닌 그 대원이
+// 트릭을 가져가 버려서 즉시 미션이 실패한다. 리드를 고려 중인 대원(pIdx)
+// 본인의 과제 카드는 이미 myHits/foreignHits 로직이 별도로 정확히
+// 처리하므로 여기서는 제외한다.
+function suitLeadDangerValue(suit,pIdx){
+  let danger=null;
+  for(const p of G.players){
+    if(p.id===pIdx) continue;
+    if(!p.commCard || p.commTag!=='single') continue;
+    if(p.commCard.suit!==suit) continue;
+    const t=G.pendingTasks.find(tt=>!tt.done && tt.suit===p.commCard.suit && tt.value===p.commCard.value);
+    if(!t) continue;
+    if(t.owner===p.id) continue; // 본인 과제 카드라면 오히려 좋은 일 — 위험하지 않음
+    if(danger===null || p.commCard.value>danger) danger=p.commCard.value;
+  }
+  return danger;
+}
+
+function aiChooseCard(pIdx,legal){
+  let best=null,bestScore=-1e9;
+  const sp=G.mission.special;
+  // 이 대원 본인이 "트릭을 이기면 안 되는" 특수 규칙의 대상인지 미리 확인.
+  // 대상이라면 트릭을 이기는 결과에 큰 감점을 줘서, 낼 수 있는 카드 중에
+  // 이기지 않는 카드가 있다면 그쪽을 우선 선택하게 한다.
+  const mustNotWin = !!(sp && pIdx===G.targets.main && sp.type==='noWin');
+  for(const card of legal){
+    const hypothetical=G.trick.plays.concat([{player:pIdx,card}]);
+    const leader=trickLeaderOf(hypothetical);
+    const wouldWin=leader===pIdx;
+    let score=0;
+
+    if(mustNotWin && wouldWin){
+      score -= 500;
+    }
+
+    if(G.trick.plays.length===0){
+      // 이 카드로 트릭을 리드하는 경우 — 위에서 설명한 "강제 공개" 위험을
+      // 점검한다. 내가 내는 카드가 그 위험한 값보다 높으면 안전하다(내가
+      // 먼저 이기고 있을 것이므로), 낮거나 같으면 위험을 피해 크게 감점한다.
+      const dangerVal=suitLeadDangerValue(card.suit,pIdx);
+      if(dangerVal!==null && card.value<dangerVal){
+        score -= 300;
+      }
+    }
+
+    // find every undone task card present ANYWHERE in this hypothetical trick
+    // (not just the candidate card itself — a card already played by someone
+    // else can also be another player's task card, and winning the trick
+    // still fails the mission even if my own card isn't the task card).
+    const taskHits=hypothetical
+      .map(p=>({play:p,t:G.pendingTasks.find(tt=>!tt.done && tt.suit===p.card.suit && tt.value===p.card.value)}))
+      .filter(x=>x.t);
+    const myHits=taskHits.filter(x=>x.t.owner===pIdx);
+    const foreignHits=taskHits.filter(x=>x.t.owner!==pIdx);
+
+    if(myHits.length){
+      const orderOK=myHits.every(x=>taskOrderOK(x.t));
+      if(!wouldWin){
+        score += -10;
+      } else if(!orderOK){
+        score += -20;
+      } else {
+        // 현재 트릭 판돈만으로 "이기고 있다"고 해도, 아직 카드를 낼 대원이
+        // 남아있다면 더 높은 같은 수트 카드나 우주선이 나와서 뒤집힐 수 있다.
+        // 남은 위협 카드 수만큼(공개 정보 기반 카드 카운팅) 점수를 깎아서,
+        // 낮은 숫자 과제 카드를 무작정 일찍 내지 않도록 한다.
+        const remainingActors=4-hypothetical.length;
+        const threat=remainingActors>0?remainingThreatCount(pIdx,card):0;
+        score += 130 - threat*22;
+      }
+    }
+    if(foreignHits.length){
+      if(wouldWin){
+        score -= 220; // catastrophic: about to win a trick holding someone else's task card
+      } else if(hypothetical.length===4){
+        // 이 카드가 이번 트릭의 마지막 카드라서 승자가 이미 100% 확정됐다.
+        // 확정된 승자가 이 과제의 주인이라도, 순서 규칙(tokenTag/rank)이 아직
+        // 안 맞으면(먼저 끝나야 할 과제가 남아있으면) 그건 "너무 일찍 완수"로
+        // 실패 처리된다 — 소유자만 맞는지가 아니라 순서까지 같이 확인해야 한다.
+        const anyFail=foreignHits.some(hit=>hit.t.owner!==leader || !taskOrderOK(hit.t));
+        if(anyFail) score -= 220;
+        else score += 150; // 과제 카드를 실어 보내 임무 완수를 확정짓는 수
+      } else {
+        // 아직 카드를 낼 대원이 남아있어 완전히 확정되진 않았지만,
+        // 이미 나온 카드만으로 과제 주인이 더 이상 못 이기는 게 확정됐다면
+        // (공개 정보만으로 판단 가능) 이 역시 사실상 실패가 확정된 것이다.
+        // 순서가 아직 안 맞는 과제는 이 트릭이 어떻게 끝나든(주인이 이기든
+        // 지든) 무조건 실패로 이어진다 — 주인이 지면 소유자 불일치 실패,
+        // 주인이 이기면 순서 위반 실패라 빠져나갈 길이 없다. 그래서
+        // 순서가 안 맞는 과제 카드는 아예 확정 실패로 취급해서 최대한
+        // 피하게 한다 (예: 노랑9가 2순위인데 분홍2가 아직 안 끝났다면,
+        // 노랑을 리드해서 노랑9를 끌어내는 건 무조건 위험한 수다).
+        const ledSuit=G.trick.ledSuit || card.suit;
+        const certainFail=foreignHits.some(hit=>{
+          if(!taskOrderOK(hit.t)) return true;
+          const ownerPlay=hypothetical.find(p=>p.player===hit.t.owner);
+          return ownerPlay && cardCannotWinAnymore(ownerPlay,hypothetical,ledSuit);
+        });
+        if(certainFail){
+          score -= 220;
+        } else {
+          // 진짜 불확실한 경우 - 남은 대원 수만 뭉뚱그려 감점하지 않고,
+          // 과제 주인이 이미 냈다면(=현재 1등, certainFail이 아니므로) 실제로
+          // 역전 가능한 위협 카드가 몇 장이나 남았는지 카드 카운팅으로 잰다.
+          // 예전엔 "남은 대원 1명 = 무조건 위험"으로 취급해서, 예를 들어
+          // 파랑 최고값(9)으로 이미 확정 1등인데도 우주선처럼 진짜 뒤집을 수
+          // 있는 카드가 거의 안 남았을 때조차 과제 카드 내기를 필요 이상으로
+          // 꺼리는 문제가 있었다.
+          const remainingCount=4-hypothetical.length;
+          let riskPenalty=0;
+          for(const hit of foreignHits){
+            const ownerPlay=hypothetical.find(p=>p.player===hit.t.owner);
+            if(ownerPlay){
+              const threat=Math.min(remainingThreatCount(pIdx,ownerPlay.card), Math.max(0,remainingCount));
+              riskPenalty += threat*10;
+            } else {
+              // 과제 주인이 아직 안 냈다 — 누가 가져갈지조차 불확실하니 보수적으로.
+              riskPenalty += Math.max(0,remainingCount)*18;
+            }
+          }
+          score += 15-riskPenalty;
+        }
+      }
+    }
+    if(!myHits.length && !foreignHits.length){
+      if(wouldWin) score-=2;
+      // 이 카드 자체는 과제 카드가 아니지만, 아직 못 끝낸 과제와 같은 수트라면
+      // 그 수트를 우선적으로 내(리드하거나, 어차피 버릴 때 이 수트부터) 과제
+      // 카드가 나올 기회를 만든다. 이게 없으면 AI가 미션과 무관한 수트만
+      // 계속 내다가 정작 과제 수트 카드는 게임 막판까지 안 나오는 경우가 생긴다.
+      // 단, 아래 두 경우는 제외한다:
+      // 1) 그 과제 카드를 내가 지금 직접 손에 들고 있는 경우 — "수트를
+      //    노출시켜 과제 카드를 끌어내자"는 취지인데, 이미 손에 있어서 바로
+      //    낼 수 있는 카드는 위의 myHits/foreignHits 로직이 더 정확히 판단한다.
+      // 2) 순서 규칙(tokenTag/rank)상 아직 완수할 수 없는 과제 — 예를 들어
+      //    분홍2(1순위)가 안 끝났는데 노랑9(2순위)는 지금 완수해도 순서 위반
+      //    실패로 이어진다. 그런 수트를 일부러 리드해서 과제 카드를 억지로
+      //    끌어내는 건 도움이 안 되고 오히려 사고 위험만 키운다.
+      const myHand=G.players[pIdx].hand;
+      const relatedTasks=G.pendingTasks.filter(t=>!t.done && t.suit===card.suit &&
+        taskOrderOK(t) &&
+        !myHand.some(h=>h.suit===t.suit && h.value===t.value)).length;
+      if(relatedTasks) score += 7*relatedTasks;
+    }
+
+    if(card.suit==='R') score -= 3;
+    // 이길 땐 최대한 낮은(싼) 카드로 이기고, 반드시 질 트릭에서는 오히려
+    // 가장 높은(위협적인) 카드부터 먼저 버린다. 예: 리드된 로켓4에 로켓1과
+    // 로켓3을 둘 다 못 이기는 상황이라면, 이번에 로켓3을 버려야 다음 트릭에
+    // 낮은 로켓만 남아 그 카드가 나중에 아군의 트릭을 가로채는 사고를 막는다.
+    // 반대로 낮은 카드부터 버리면 위협적인 카드가 계속 손에 쌓여있다가
+    // 엉뚱한 순간에 튀어나와 트릭을 뺏어가게 된다.
+    if(wouldWin) score -= card.value; else score += card.value;
+    score += Math.random()*1; // 완전 동점일 때만 미세하게 갈라주는 용도
+    if(score>bestScore){bestScore=score;best=card;}
+  }
+  return best||legal[0];
+}
+
+/* ============ RENDER ============ */
+function render(){
+  const app=document.getElementById('app');
+  if(!G){
+    let menuHtml=renderMenu();
+    if(_storyModalState) menuHtml+=renderStoryModal();
+    if(_confirmState) menuHtml+=renderConfirmModal();
+    app.innerHTML=menuHtml; attachHandlers(); scheduleSave(); return;
+  }
+  let html=renderHeader();
+  if(G.phase==='targetPick') html+=renderTargetPick();
+  else if(G.phase==='assignAllPick') html+=renderAssignAllPick();
+  else if(G.phase==='taskPick') html+=renderTaskPick();
+  else if(G.phase==='distress') html+=renderDistress();
+  else if(G.phase==='comm') html+=renderComm();
+  else if(G.phase==='play') html+=renderBoard();
+  else if(G.phase==='result') html+=renderResult();
+  if(_logModalOpen) html+=renderLogModal();
+  if(_storyModalState) html+=renderStoryModal();
+  if(_confirmState) html+=renderConfirmModal();
+  app.innerHTML=html;
+  attachHandlers();
+  scheduleSave();
+}
+
+function renderMenu(){
+  let cards=MISSIONS.map(m=>{
+    const done=completed.has(m.id);
+    const toks=m.tokens.map(t=>`<span class="tok">${t}</span>`).join('');
+    const desc=m.special?m.special.desc:(m.tasks?`과제 ${m.tasks}개`:'');
+    return `<div class="mcard ${done?'done':''}" data-mission="${m.id}">
+      ${done?'<span class="check">✓</span>':''}
+      <div class="num">${String(m.id).padStart(2,'0')}</div>
+      <div class="tag">${desc}</div>
+      <div class="tokens">${toks}</div>
+    </div>`;
+  }).join('');
+  return `
+  <header class="top">
+    <div class="title">스페이스 크루<span class="ver-tag">${APP_VERSION}</span><small>나인 행성 탐사 · 솔로 모드 · 나 + AI 3인</small></div>
+    <div class="flexrow">
+      <span class="pill">완료 ${completed.size} / 50</span>
+      <button class="ghost small" id="exportSaveBtn" type="button">내보내기</button>
+      <button class="ghost small" id="importSaveBtn" type="button">가져오기</button>
+      <input type="file" id="importFileInput" accept="application/json" style="display:none;">
+      <button class="ghost small" id="resetSaveBtn" type="button">초기화</button>
+    </div>
+  </header>
+  <div class="banner">진행 상황은 이 브라우저에 자동 저장되지만, 새 버전 파일을 열면 저장 공간이 분리되어 이전 기록이 안 보일 수 있습니다. 버전을 올리기 전에 <b>내보내기</b>로 저장 파일을 받아두고, 새 버전에서 <b>가져오기</b>로 불러오면 완료 기록이 이어집니다.</div>
+  <div class="banner">임무를 선택하세요. 로켓4를 가진 대원이 커맨더가 되어 과제 분배와 첫 트릭을 시작합니다. 색깔카드 값이 높을수록 강하며, 로켓은 항상 트럼프입니다.</div>
+  <div id="missionGrid" style="overflow-y:auto;">${cards}</div>`;
+}
+
+function renderHeader(){
+  const canDeclareFail=G.phase!=='result';
+  return `<header class="top">
+    <div class="title"><span class="mission-title-btn" id="missionTitleBtn">미션 ${G.mission.id}</span><span class="ver-tag">${APP_VERSION}</span><small>시도 #${G.attemptNo}</small></div>
+    <div class="flexrow">
+      ${canDeclareFail?'<button class="ghost small" id="declareFailBtn" type="button" style="border-color:var(--bad);color:var(--bad);">🏳 실패 선언</button>':''}
+      <button class="ghost small" id="toMenu" type="button">← 미션 목록</button>
+    </div>
+  </header>
+  ${G.mission.special?`<div class="banner"><b>특수 규칙:</b> ${G.mission.special.desc}</div>`:''}`;
+}
+
+function seatCard(p,i){
+  // 트릭이 끝난 직후에도(다음 트릭이 시작되기 전, 무전/구조신호 화면에서도)
+  // 다음 트릭의 선이 누구인지 미리 파란 테두리로 보여준다. G.turn은 트릭이
+  // 끝나자마자 승자로 갱신되므로, 플레이 화면이 아니어도 이미 정확한 값이다.
+  const isTurn=(G.phase==='play'||G.phase==='comm'||G.phase==='distress') && G.turn===i;
+  const isCommander=i===G.commanderIndex;
+  const justActed=G.phase==='play' && G.trick && G.trick.lastPlayed===i;
+  const tasksHtml=p.tasks.length? `<div class="taskrow">${p.tasks.map(t=>`<span class="taskchip ${t.suit} ${t.done?'done':''}">${SUIT_ICON[t.suit]}${t.value}${t.tokenTag?` <span class="owner">[${t.tokenTag}]</span>`:''}</span>`).join('')}</div>`:'';
+  const comm=p.commCard? `<div class="commflag">📡 <span style="color:${SUIT_COLOR[p.commCard.suit]};font-weight:600;">${SUIT_ICON[p.commCard.suit]}${p.commCard.value}</span> (${tagLabel(p.commTag)})</div>`
+             : `<div class="commflag off">${p.commUsed?'무전 사용 완료':'무전 대기'}</div>`;
+  return `<div class="seat ${isTurn?'active':''} ${isCommander?'commander':''} ${justActed?'just-acted':''}">
+    <div class="name">${p.name}</div>
+    <div class="sub">${p.hand.length}장 보유</div>
+    <div class="wins">🏆 ${p.wins}트릭</div>
+    ${comm}
+    ${tasksHtml}
+  </div>`;
+}
+
+function myHandPanel(label){
+  const human=G.players[0];
+  return `<div class="panel">
+    <div class="eyebrow" style="text-align:center;margin-bottom:6px;">${label||'내 패'} · ${human.hand.length}장</div>
+    <div id="handRow">${human.hand.map(c=>cardHtml(c,false,'hand-static',false,true)).join('')}</div>
+  </div>`;
+}
+function renderTargetPick(){
+  const sp=G.mission.special;
+  const n=NEEDS_TARGET[sp.type];
+  return `<div class="panel center">
+    <h3>특수 규칙 대상 지정</h3>
+    <p class="mono" style="color:var(--muted);font-size:12px;">${sp.desc}</p>
+    <div class="opts" id="targetOpts">
+      ${G.players.map(p=>`<button class="target-btn" data-id="${p.id}">${p.name}</button>`).join('')}
+    </div>
+    <p style="color:var(--faint);font-size:11px;margin-top:10px;">${n===2?'두 명을 순서대로 선택하세요 (A, B).':'한 명을 선택하세요.'}</p>
+    <div id="targetSel" class="mono" style="margin-top:6px;color:var(--amber);"></div>
+  </div>
+  ${myHandPanel()}
+  <div class="panel logpanel" id="logOpenBtn">
+    <div class="eyebrow"><span>교신 기록</span><span class="tap-hint">탭하여 전체보기</span></div>
+    <div id="log">${G.log.slice().reverse().map(l=>`<div class="${l.cls}">${l.msg}</div>`).join('')}</div>
+  </div>`;
+}
+let _targetSel=[];
+let _logModalOpen=false;
+let _confirmState=null; // {msg, onYes}
+let _storyModalState=null; // {id, mode:'preStart'|'view'}
+function askConfirm(msg,onYes){ _confirmState={msg,onYes:onYes||null}; render(); }
+function renderAssignAllPick(){
+  return `<div class="panel center">
+    <h3>과제 일괄 배정</h3>
+    <p style="color:var(--muted);font-size:13px;">커맨더가 예/아니오를 확인한 뒤, 모든 과제(${G.pendingTasks.length}개)를 한 명에게 맡깁니다. 누구에게 맡길까요?</p>
+    <div class="opts">
+      ${G.players.map(p=>`<button class="assignall-btn" data-id="${p.id}">${p.name}</button>`).join('')}
+    </div>
+  </div>
+  ${myHandPanel()}`;
+}
+function renderTaskPick(){
+  if(!G.pickQueue.length){ return '<div class="panel center">과제 배정 중...</div>'; } // safety net: queue already drained mid-render
+  const pIdx=G.pickQueue[0];
+  const player=G.players[pIdx];
+  const avail=G.pendingTasks.map((t,i)=>({t,i})).filter(x=>x.t.owner===null);
+  return `<div class="seats">${G.players.map((p,i)=>seatCard(p,i)).join('')}</div>
+  <div class="panel center">
+    <h3>과제 선택 — ${player.name} 차례</h3>
+    <div class="taskrow" style="justify-content:center;">
+      ${avail.map(x=>`<button class="task-pick-btn ${x.t.suit}" data-idx="${x.i}">${SUIT_ICON[x.t.suit]} ${x.t.value}${x.t.tokenTag?` [${x.t.tokenTag}]`:''}</button>`).join('')}
+    </div>
+    ${!player.isHuman?'<p style="color:var(--faint);font-size:12px;margin-top:10px;">AI가 선택 중...</p>':''}
+  </div>
+  ${myHandPanel()}`;
+}
+function renderDistress(){
+  const human=G.players[0];
+  const pickerNeeded=G.wantDistress;
+  return `<div class="seats">${G.players.map((p,i)=>seatCard(p,i)).join('')}</div>
+  <div class="panel center">
+    <h3>구조 신호 (선택)</h3>
+    <p style="color:var(--muted);font-size:13px;">시도가 어렵다면 전원이 이웃에게 카드 1장씩 넘길 수 있습니다. 로켓은 넘길 수 없습니다.</p>
+    ${!pickerNeeded?`
+      <div class="opts">
+        <button id="distressYes" class="primary">구조 신호 사용</button>
+        <button id="distressNo" class="ghost">사용하지 않고 시작</button>
+      </div>`:`
+      <p class="mono" style="color:var(--amber);font-size:12px;">넘길 카드 1장을 선택하세요 (로켓 제외).</p>
+      <div id="handRow">${human.hand.filter(c=>c.suit!=='R').map(c=>cardHtml(c,true,'distress-card')).join('')}</div>
+      <div class="flexrow center" style="justify-content:center;margin-top:8px;">
+        <button data-dir="right" class="dir-btn">오른쪽으로 전달</button>
+        <button data-dir="left" class="dir-btn">왼쪽으로 전달</button>
+      </div>
+    `}
+  </div>
+  ${pickerNeeded?'':myHandPanel()}
+  <div class="panel logpanel" id="logOpenBtn">
+    <div class="eyebrow"><span>교신 기록</span><span class="tap-hint">탭하여 전체보기</span></div>
+    <div id="log">${G.log.slice().reverse().map(l=>`<div class="${l.cls}">${l.msg}</div>`).join('')}</div>
+  </div>`;
+}
+function renderComm(){
+  const human=G.players[0];
+  const allowed=commAllowedNow();
+  const options=eligibleCommCards(human);
+  return `<div class="seats">${G.players.map((p,i)=>seatCard(p,i)).join('')}</div>
+  <div class="panel center">
+    <h3>무전 통신 (트릭 ${G.trickNumber} 전)</h3>
+    <p style="color:var(--muted);font-size:13px;">한 색상 카드를 공개하고, 그 카드가 손에서 최고/최저/유일한지 표시할 수 있습니다. 미션당 1회.</p>
+    ${!allowed?'<p style="color:var(--bad);font-size:12px;">현재 통신 두절 상태입니다.</p>':''}
+    ${human.commUsed?'<p style="color:var(--faint);font-size:12px;">이미 무전을 사용했습니다.</p>':
+      allowed? `<div class="comm-grid">
+        ${options.map((o,i)=>`<button class="comm-btn" data-i="${i}" style="color:${SUIT_COLOR[o.card.suit]};border-color:${SUIT_COLOR[o.card.suit]};">${SUIT_ICON[o.card.suit]}${o.card.value} · ${tagLabel(o.tag)}</button>`).join('')}
+      </div>`:''}
+    <div style="margin-top:14px;">
+      <button id="startPlayBtn" class="primary">${G.trickNumber===1?'플레이 시작':'다음 트릭 시작'}</button>
+    </div>
+  </div>
+  ${myHandPanel('내 패 (통신 참고용)')}
+  <div class="panel logpanel" id="logOpenBtn">
+    <div class="eyebrow"><span>교신 기록</span><span class="tap-hint">탭하여 전체보기</span></div>
+    <div id="log">${G.log.slice().reverse().map(l=>`<div class="${l.cls}">${l.msg}</div>`).join('')}</div>
+  </div>`;
+}
+
+
+function taskHintFor(c){
+  if(!G || !G.pendingTasks) return null;
+  return G.pendingTasks.find(t=>!t.done && t.suit===c.suit && t.value===c.value) || null;
+}
+function taskDotHtml(c){
+  const t=taskHintFor(c);
+  if(!t || t.owner===null || t.owner===undefined) return '';
+  const mine=t.owner===0;
+  return `<span class="taskdot ${mine?'mine':'other'}" title="${G.players[t.owner].name}의 과제 카드">${mine?'★':'⚠'}</span>`;
+}
+function cardHtml(c,clickable,cls,disabled,showTaskHint){
+  const dot=showTaskHint? taskDotHtml(c) : '';
+  return `<div class="card big ${c.suit} ${disabled?'disabled':''} ${cls||''}" ${clickable&&!disabled?`data-suit="${c.suit}" data-value="${c.value}"`:''}>
+    ${dot}<span class="top">${c.value}</span><span class="icon">${SUIT_ICON[c.suit]}</span><span class="bot">${c.value}</span>
+  </div>`;
+}
+
+function renderBoard(){
+  const human=G.players[0];
+  const ledSuit=G.trick.ledSuit;
+  const legal=(G.turn===0)? legalCards(human.hand,ledSuit).map(ckey):[];
+  const taskBoard=G.pendingTasks.length? `<div class="panel">
+    <div class="eyebrow">과제 현황</div>
+    <div class="taskrow">${G.pendingTasks.map(t=>`<span class="taskchip ${t.suit} ${t.done?'done':''}">${SUIT_ICON[t.suit]}${t.value}${t.tokenTag?` [${t.tokenTag}]`:''} <span class="owner">${G.players[t.owner].name}</span></span>`).join('')}</div>
+    <div class="mono" style="font-size:10px;color:var(--faint);margin-top:6px;">★ 내 과제 카드 · ⚠ 남의 과제 카드 — 트릭에 뜨면 누가 이기는지 꼭 확인하세요.</div>
+  </div>`:'';
+  const slots=[0,1,2,3].map(seat=>{
+    const play=G.trick.plays.find(p=>p.player===seat);
+    const justPlayed=seat===G.trick.lastPlayed?' just-played':'';
+    if(play) return `<div class="trickslot${justPlayed}">${cardHtml(play.card,false,'',false,true)}<span class="who">${G.players[seat].name}</span></div>`;
+    return `<div class="trickslot">대기<span class="who">${G.players[seat].name}</span></div>`;
+  }).join('');
+  return `<div class="seats">${G.players.map((p,i)=>seatCard(p,i)).join('')}</div>
+  ${taskBoard}
+  <div class="porthole">${slots}</div>
+  <div class="panel">
+    <div class="eyebrow" style="text-align:center;margin-bottom:6px;">${G.turn===0?'당신의 차례입니다':`${G.players[G.turn].name} 차례...`}</div>
+    <div id="handRow">${human.hand.map(c=>{
+      const dis = G.turn!==0 || !legal.includes(ckey(c));
+      return cardHtml(c,true,'hand-card',dis,true);
+    }).join('')}</div>
+  </div>
+  <div class="panel logpanel" id="logOpenBtn">
+    <div class="eyebrow"><span>교신 기록</span><span class="tap-hint">탭하여 전체보기</span></div>
+    <div id="log">${G.log.slice().reverse().map(l=>`<div class="${l.cls}">${l.msg}</div>`).join('')}</div>
+  </div>`;
+}
+
+function renderResult(){
+  const r=G.result;
+  return `<div class="panel center" style="padding:40px 20px;">
+    <h2 style="color:${r.success?'var(--good)':'var(--bad)'};font-size:26px;">${r.success?'🛰️ 미션 성공':'☄️ 미션 실패'}</h2>
+    <p style="color:var(--muted);margin-top:10px;">${r.msg}</p>
+    <p class="mono" style="color:var(--faint);font-size:12px;margin-top:6px;">미션 ${G.mission.id} · 시도 #${G.attemptNo}</p>
+    <div class="opts" style="align-items:center;margin-top:20px;">
+      ${!r.success?`<button class="primary" id="retryBtn">다시 시도</button>`:''}
+      ${r.success && G.mission.id<50?`<button class="primary" id="nextBtn">다음 미션 (${G.mission.id+1})</button>`:''}
+      <button class="ghost" id="menuBtn">미션 목록으로</button>
+    </div>
+  </div>
+  <div class="panel logpanel" id="logOpenBtn">
+    <div class="eyebrow"><span>교신 기록</span><span class="tap-hint">탭하여 전체보기</span></div>
+    <div id="log">${G.log.slice().reverse().map(l=>`<div class="${l.cls}">${l.msg}</div>`).join('')}</div>
+  </div>`;
+}
+
+function fallbackCopy(text,cb){
+  try{
+    const ta=document.createElement('textarea');
+    ta.value=text;
+    ta.style.position='fixed';
+    ta.style.opacity='0';
+    document.body.appendChild(ta);
+    ta.focus();ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    if(cb)cb();
+  }catch(e){ /* clipboard unavailable; silently ignore */ }
+}
+
+function renderLogModal(){
+  const entries=G.log.slice().reverse();
+  return `<div class="modalbg" id="logModalBg">
+    <div class="modal modal-log">
+      <div class="flexrow" style="justify-content:space-between;">
+        <h3>교신 기록 전체 (${entries.length})</h3>
+        <div class="flexrow" style="gap:6px;">
+          <button class="ghost small" id="logCopyBtn" type="button">복사 📋</button>
+          <button class="ghost small" id="logModalClose" type="button">닫기 ✕</button>
+        </div>
+      </div>
+      <div class="modal-log-body" id="logModalBody">${entries.length? entries.map(l=>`<div class="${l.cls}">${l.msg}</div>`).join(''):'<div class="sys">기록이 없습니다.</div>'}</div>
+    </div>
+  </div>`;
+}
+
+function renderConfirmModal(){
+  const infoOnly=!_confirmState.onYes;
+  return `<div class="modalbg" id="confirmModalBg">
+    <div class="modal center">
+      <p style="color:var(--ink);">${_confirmState.msg}</p>
+      <div class="opts row">
+        ${infoOnly?'':'<button class="ghost" id="confirmNoBtn" type="button">취소</button>'}
+        <button class="primary" id="confirmYesBtn" type="button" ${infoOnly?'':'style="background:linear-gradient(135deg,var(--bad),#b53246);"'}>확인</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+function renderStoryModal(){
+  const id=_storyModalState.id;
+  const story=MISSION_STORY[id] || '이 미션에 대한 이야기가 아직 준비되지 않았습니다.';
+  const checked=storyDismissed.has(id);
+  return `<div class="modalbg" id="storyModalBg">
+    <div class="modal modal-story">
+      <h3>미션 ${id}</h3>
+      <div class="story-body">${story}</div>
+      <label class="story-check"><input type="checkbox" id="storyDismissCheck" ${checked?'checked':''}> 이 미션에 대해 다시 표시하지 않기</label>
+      <div class="opts row">
+        <button class="primary" id="storyConfirmBtn" type="button">확인</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+/* ============ EVENT HANDLERS ============ */
+function goToMission(id){
+  if(storyDismissed.has(id)) startMission(id);
+  else { _storyModalState={id, mode:'preStart'}; render(); }
+}
+function attachHandlers(){
+  document.querySelectorAll('[data-mission]').forEach(el=>{
+    el.onclick=()=>goToMission(parseInt(el.dataset.mission));
+  });
+  const toMenu=document.getElementById('toMenu');
+  if(toMenu) toMenu.onclick=()=>openMissionSelect();
+  const missionTitleBtn=document.getElementById('missionTitleBtn');
+  if(missionTitleBtn) missionTitleBtn.onclick=()=>{ _storyModalState={id:G.mission.id, mode:'view'}; render(); };
+  const storyConfirmBtn=document.getElementById('storyConfirmBtn');
+  if(storyConfirmBtn) storyConfirmBtn.onclick=()=>{
+    const cb=document.getElementById('storyDismissCheck');
+    const id=_storyModalState.id, mode=_storyModalState.mode;
+    if(cb && cb.checked) storyDismissed.add(id); else storyDismissed.delete(id);
+    _storyModalState=null;
+    saveGame();
+    if(mode==='preStart') startMission(id); else render();
+  };
+  const storyModalBg=document.getElementById('storyModalBg');
+  if(storyModalBg) storyModalBg.onclick=(e)=>{ if(e.target.id==='storyModalBg'){ _storyModalState=null; render(); } };
+  const declareFail=document.getElementById('declareFailBtn');
+  if(declareFail) declareFail.onclick=()=>{
+    askConfirm('이 미션이 더 이상 달성 불가능하다고 판단하여 실패를 선언할까요? 되돌릴 수 없습니다.', ()=>{
+      endMission(false,'커맨더가 미션 실패를 선언했습니다 (달성 불가 판단).');
+    });
+  };
+  const logOpenBtn=document.getElementById('logOpenBtn');
+  if(logOpenBtn) logOpenBtn.onclick=()=>{ _logModalOpen=true; render(); };
+  const logCopyBtn=document.getElementById('logCopyBtn');
+  if(logCopyBtn) logCopyBtn.onclick=()=>{
+    // 로그 메시지에는 색상 강조용 <span> 태그가 포함돼 있어서, 그대로 복사하면
+    // 태그가 텍스트로 딸려 나온다. 임시 엘리먼트에 innerHTML로 넣고 textContent만
+    // 뽑아내면 태그 없이 순수 텍스트만 얻을 수 있다.
+    const stripHtml=(html)=>{ const tmp=document.createElement('div'); tmp.innerHTML=html; return tmp.textContent||tmp.innerText||''; };
+    const text=G.log.map(l=>stripHtml(l.msg)).join('\n');
+    const done=()=>{ const old=logCopyBtn.textContent; logCopyBtn.textContent='복사됨 ✅'; setTimeout(()=>{ if(logCopyBtn) logCopyBtn.textContent=old; },1200); };
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(text).then(done).catch(()=>fallbackCopy(text,done));
+    } else {
+      fallbackCopy(text,done);
+    }
+  };
+  const logModalBg=document.getElementById('logModalBg');
+  if(logModalBg) logModalBg.onclick=(e)=>{ if(e.target.id==='logModalBg'){ _logModalOpen=false; render(); } };
+  const logModalClose=document.getElementById('logModalClose');
+  if(logModalClose) logModalClose.onclick=()=>{ _logModalOpen=false; render(); };
+  const confirmYesBtn=document.getElementById('confirmYesBtn');
+  if(confirmYesBtn) confirmYesBtn.onclick=()=>{ const cb=_confirmState&&_confirmState.onYes; _confirmState=null; if(cb) cb(); else render(); };
+  const confirmNoBtn=document.getElementById('confirmNoBtn');
+  if(confirmNoBtn) confirmNoBtn.onclick=()=>{ _confirmState=null; render(); };
+  const confirmModalBg=document.getElementById('confirmModalBg');
+  if(confirmModalBg) confirmModalBg.onclick=(e)=>{ if(e.target.id==='confirmModalBg'){ _confirmState=null; render(); } };
+  const resetBtn=document.getElementById('resetSaveBtn');
+  if(resetBtn) resetBtn.onclick=()=>{
+    askConfirm('완료 기록과 진행 상황을 모두 초기화할까요? 되돌릴 수 없습니다.', ()=>{
+      G=null; completed=new Set(); attempts={};
+      saveGame();
+      render();
+    });
+  };
+  const exportBtn=document.getElementById('exportSaveBtn');
+  if(exportBtn) exportBtn.onclick=exportSave;
+  const importBtn=document.getElementById('importSaveBtn');
+  const importInput=document.getElementById('importFileInput');
+  if(importBtn && importInput) importBtn.onclick=()=>importInput.click();
+  if(importInput) importInput.onchange=(e)=>{
+    const file=e.target.files && e.target.files[0];
+    if(!file)return;
+    const reader=new FileReader();
+    reader.onload=()=>importSaveFromText(reader.result);
+    reader.readAsText(file);
+    importInput.value='';
+  };
+
+  document.querySelectorAll('.target-btn').forEach(el=>{
+    el.onclick=()=>{
+      const id=parseInt(el.dataset.id);
+      const n=NEEDS_TARGET[G.mission.special.type];
+      if(_targetSel.includes(id))return;
+      _targetSel.push(id);
+      if(_targetSel.length>=n){ const sel=_targetSel;_targetSel=[]; confirmTargets(sel); }
+      else render(), document.getElementById('targetSel').textContent='선택됨: '+_targetSel.map(i=>G.players[i].name).join(', ');
+    };
+  });
+  document.querySelectorAll('.assignall-btn').forEach(el=>{
+    el.onclick=()=>humanAssignAllPick(parseInt(el.dataset.id));
+  });
+  document.querySelectorAll('.task-pick-btn').forEach(el=>{
+    el.onclick=()=>humanPickTask(parseInt(el.dataset.idx));
+  });
+  const dy=document.getElementById('distressYes');
+  if(dy) dy.onclick=()=>{G.wantDistress=true;render();};
+  const dn=document.getElementById('distressNo');
+  if(dn) dn.onclick=skipDistress;
+  document.querySelectorAll('.distress-card').forEach(el=>{
+    el.onclick=()=>{document.querySelectorAll('.distress-card').forEach(x=>x.classList.remove('selected'));el.classList.add('selected');
+      G.humanDistressCard={suit:el.dataset.suit,value:parseInt(el.dataset.value)};};
+  });
+  document.querySelectorAll('.dir-btn').forEach(el=>{
+    el.onclick=()=>{ if(!G.humanDistressCard){askConfirm('넘길 카드를 먼저 선택하세요.');return;} useDistress(el.dataset.dir); };
+  });
+  document.querySelectorAll('.comm-btn').forEach(el=>{
+    el.onclick=()=>{const opts=eligibleCommCards(G.players[0]);const o=opts[parseInt(el.dataset.i)];humanCommunicate(o.card,o.tag);};
+  });
+  const spb=document.getElementById('startPlayBtn');
+  if(spb) spb.onclick=beginPlay;
+  document.querySelectorAll('.hand-card').forEach(el=>{
+    if(el.classList.contains('disabled'))return;
+    el.onclick=()=>{
+      if(G.turn!==0)return;
+      playCard(0,{suit:el.dataset.suit,value:parseInt(el.dataset.value)});
+    };
+  });
+  const retry=document.getElementById('retryBtn');
+  if(retry) retry.onclick=()=>startMission(G.mission.id);
+  const next=document.getElementById('nextBtn');
+  if(next) next.onclick=()=>goToMission(G.mission.id+1);
+  const menuBtn=document.getElementById('menuBtn');
+  if(menuBtn) menuBtn.onclick=openMissionSelect;
+}
+
+// hook random-pass right after trick1 resolves (call inside resolveTrick flow)
+const _origResolve=resolveTrick;
+resolveTrick=function(){
+  const wasTrick1 = G.trickNumber===1;
+  _origResolve();
+  if(wasTrick1 && (G.phase==='play'||G.phase==='comm')) afterFirstTrickHook();
+};
+
+(async function init(){
+  await loadGame(); // resume last saved state if present (menu progress and/or in-progress mission)
+  render();
+  if(G && G.phase==='play' && G.turn!==0) maybeAIPlay(); // continue a mid-trick AI turn after reload
+})();
+</script>
+</body>
+</html>
