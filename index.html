@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>스페이스 크루: 나인 행성 탐사 — 솔로 모드 v0.115</title>
+<title>스페이스 크루: 나인 행성 탐사</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
@@ -47,9 +47,10 @@ button.small{padding:5px 10px;font-size:12px;}
 
 /* mission grid */
 #missionGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;}
-.mcard{background:var(--bg2);border:1px solid var(--edge);border-radius:14px;padding:12px;cursor:pointer;transition:.15s;}
+.mcard{background:var(--bg2);border:1px solid var(--edge);border-radius:14px;padding:12px;cursor:pointer;transition:.15s;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;touch-action:manipulation;}
 .mcard:hover{border-color:var(--blue);transform:translateY(-2px);}
 .mcard.done{border-color:var(--green);}
+.mcard.selected{border-color:var(--blue);border-width:2px;box-shadow:0 0 0 2px rgba(90,160,255,.25) inset;}
 .mcard .num{font-family:'IBM Plex Mono',monospace;font-size:22px;color:var(--gold);}
 .mcard .tag{font-size:11px;color:var(--muted);margin-top:6px;min-height:28px;}
 .mcard .tokens{display:flex;gap:4px;margin-top:8px;flex-wrap:wrap;}
@@ -222,7 +223,7 @@ a.back:hover{color:var(--ink);}
 })();
 
 /* ============ CONSTANTS ============ */
-const APP_VERSION='v0.117';
+const APP_VERSION='v0.119';
 const SUITS=['P','B','G','Y'];
 const SUIT_NAME={P:'분홍',B:'파랑',G:'초록',Y:'노랑',R:'로켓'};
 const SUIT_ICON={P:'◆',B:'▲',G:'■',Y:'●',R:'🚀'};
@@ -385,38 +386,6 @@ function loadGame(){
   }catch(e){ return false; }
 }
 
-/* ---- manual export/import (파일 저장) ----
-   localStorage는 "이 게임 파일을 연 브라우저의 이 위치"에 묶여있어서, 새 버전
-   파일을 열거나 다른 브라우저/기기로 옮기면 이전 기록이 안 보일 수 있다. 이를
-   보완하기 위해 진행 상황을 JSON 파일로 내보내고, 다시 불러올 수 있게 한다. */
-function exportSave(){
-  const payload=JSON.stringify({G, completed:[...completed], attempts, storyDismissed:[...storyDismissed]}, _setReplacer);
-  const blob=new Blob([payload],{type:'application/json'});
-  const url=URL.createObjectURL(blob);
-  const d=new Date();
-  const stamp=`${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`;
-  const a=document.createElement('a');
-  a.href=url; a.download=`space-crew-save-${stamp}.json`;
-  document.body.appendChild(a); a.click(); document.body.removeChild(a);
-  setTimeout(()=>URL.revokeObjectURL(url),1000);
-}
-function importSaveFromText(text){
-  try{
-    const data=JSON.parse(text,_setReviver);
-    if(data.completed===undefined && data.G===undefined) throw new Error('not a save file');
-    if(data.G!==undefined) G=data.G;
-    if(G && !Array.isArray(G.discardAll)) G.discardAll=[];
-    if(Array.isArray(data.completed)) completed=new Set(data.completed);
-    if(data.attempts) attempts=data.attempts;
-    if(Array.isArray(data.storyDismissed)) storyDismissed=new Set(data.storyDismissed);
-    saveGame();
-    render();
-    askConfirm('저장 파일을 불러왔습니다. 완료 기록이 복원됐습니다.');
-  }catch(e){
-    askConfirm('저장 파일을 읽지 못했습니다. 이 게임에서 내보낸 JSON 파일이 맞는지 확인해주세요.');
-  }
-}
-
 function freshDeck(){
   let d=[];
   SUITS.forEach(s=>{for(let v=1;v<=9;v++)d.push({suit:s,value:v});});
@@ -430,8 +399,26 @@ function cardLabel(c){return SUIT_ICON[c.suit]+c.value;}
 function log(msg,cls){G.log.push({msg,cls:cls||''});render();}
 
 /* ============ SETUP ============ */
+let _selectedMissions=new Set(); // 초기화면에서 길게 눌러 다중 선택된 미션 id들
 function openMissionSelect(){
-  G=null;_logModalOpen=false;_storyModalState=null;render();
+  G=null;_logModalOpen=false;_storyModalState=null;_selectedMissions=new Set();render();
+}
+function toggleMissionSelect(id){
+  if(_selectedMissions.has(id)) _selectedMissions.delete(id);
+  else _selectedMissions.add(id);
+  render();
+}
+function clearMissionSelection(){
+  _selectedMissions=new Set();
+  render();
+}
+function markSelectedMissions(done){
+  _selectedMissions.forEach(id=>{
+    if(done) completed.add(id); else completed.delete(id);
+  });
+  _selectedMissions=new Set();
+  saveGame();
+  render();
 }
 
 function startMission(id){
@@ -578,8 +565,13 @@ function processTaskPick(){
   const player=G.players[pIdx];
   const avail=G.pendingTasks.filter(t=>t.owner===null);
   if(player.isHuman){ render(); return; } // wait for click
-  // AI heuristic: prefer a task whose exact card is in hand
-  let choice=avail.find(t=>player.hand.some(c=>c.suit===t.suit&&c.value===t.value));
+  // AI heuristic: 손에 든 카드와 일치하는 과제(직접 들고 있으면 타이밍을
+  // 스스로 조절할 수 있어 기본적으로 유리)를 우선하되, 그중에서도 값이
+  // 1~2처럼 극히 낮은 과제는 직접 들고 있어도 트릭을 이기기 매우 어렵다.
+  // 값이 더 높은(=더 쉬운) 매치가 있으면 그것을 먼저 고르고, 낮은 값
+  // 매치만 있을 때만 어쩔 수 없이 그것을 선택한다.
+  const handMatches=avail.filter(t=>player.hand.some(c=>c.suit===t.suit&&c.value===t.value));
+  let choice=handMatches.find(t=>t.value>2) || handMatches[0];
   if(!choice){
     // else prefer suit AI holds most of
     const counts={};avail.forEach(t=>counts[t.suit]=(counts[t.suit]||0)+1);
@@ -656,10 +648,13 @@ function startCommPhase(){
   G.players.forEach((p,i)=>{
     if(p.isHuman||p.commUsed)return;
     if(!commAllowedNow())return;
-    // 위급 정보(남의 과제 카드를 그 수트의 유일한 패로 들고 있음)가 있다면
-    // 거의 반드시 알리도록 확률을 크게 높인다 — 이런 정보를 그냥 운으로
-    // 흘려보내면, 나중에 그 수트가 강제로 리드됐을 때 팀이 대비할 수 없다.
-    const commChance=hasUrgentCommOpportunity(p)?0.95:0.6;
+    // 위급 정보(남의 과제 카드를 그 수트의 유일한 패로 들고 있음, 강제
+    // 유일패가 미완수 과제를 이겨버릴 위험, 또는 자신의 과제 카드가 매우
+    // 낮은 값이라 극히 위험한 경우)가 있다면 거의 반드시 알리도록 확률을
+    // 크게 높인다 — 이런 정보를 그냥 운으로 흘려보내면, 나중에 그 수트가
+    // 강제로 리드됐을 때 팀이 대비할 수 없다.
+    const urgent=hasUrgentCommOpportunity(p)||findCriticalOwnTask(p)||findDangerousSingle(p);
+    const commChance=urgent?0.95:0.6;
     if(Math.random()<commChance){
       const pick=pickAiCommOption(p);
       if(pick){
@@ -682,13 +677,53 @@ function eligibleCommCards(p){
   });
   return res;
 }
+// 강제로 낼 수밖에 없는 유일패(해당 수트 마지막 한 장)가, 아직 완수되지 않은
+// 과제 카드보다 값이 높은 경우를 찾는다. 이 상황에서는 그 수트가 리드되는
+// 순간 본인 의사와 무관하게 과제 카드를 이기는 패를 내야 하므로, 알리지
+// 않으면 트릭을 뺏어 미션을 실패시킬 위험이 있다.
+function findDangerousSingle(p){
+  const options=eligibleCommCards(p);
+  if(!options.length) return null;
+  const undone=G.pendingTasks.filter(t=>!t.done);
+  const dangerous=options.filter(o=>
+    o.tag==='single' &&
+    undone.some(t=>t.suit===o.card.suit && o.card.value>t.value)
+  );
+  return dangerous.length ? dangerous[Math.floor(Math.random()*dangerous.length)] : null;
+}
+// 자신이 맡은 과제의 카드를 직접 들고 있는데 그 값이 매우 낮아(1~2) 트릭을
+// 이기기 극히 어려운 경우 — 알리지 않고 방치하면 실패 확률이 매우 높으므로
+// 무조건 알린다.
+function findCriticalOwnTask(p){
+  const idx=G.players.indexOf(p);
+  const options=eligibleCommCards(p);
+  if(!options.length) return null;
+  const critical=options.filter(o=>{
+    const t=G.pendingTasks.find(t=>!t.done && t.owner===idx && t.suit===o.card.suit && t.value===o.card.value);
+    return t && t.value<=2;
+  });
+  return critical.length ? critical[Math.floor(Math.random()*critical.length)] : null;
+}
 function pickAiCommOption(p){
   // 미션과 무관한 아무 수트 힌트보다, 아직 안 끝난 과제와 관련된 힌트를
   // 우선적으로 고른다 — 같은 카드 자체가 과제 카드인 경우를 최우선으로,
   // 그다음은 최소한 과제가 걸린 수트인 경우로 우선순위를 둔다.
   const options=eligibleCommCards(p);
   if(!options.length) return null;
+  const idx=G.players.indexOf(p);
   const undone=G.pendingTasks.filter(t=>!t.done);
+  // 0순위: 자신의 과제 카드인데 값이 매우 낮아(1~2) 극히 위험한 경우
+  const criticalOwn=options.filter(o=>{
+    const t=G.pendingTasks.find(t=>!t.done && t.owner===idx && t.suit===o.card.suit && t.value===o.card.value);
+    return t && t.value<=2;
+  });
+  if(criticalOwn.length) return criticalOwn[Math.floor(Math.random()*criticalOwn.length)];
+  // 1순위: 강제 유일패가 미완수 과제를 이겨버릴 위험이 있는 경우
+  const dangerousSingle=options.filter(o=>
+    o.tag==='single' &&
+    undone.some(t=>t.suit===o.card.suit && o.card.value>t.value)
+  );
+  if(dangerousSingle.length) return dangerousSingle[Math.floor(Math.random()*dangerousSingle.length)];
   const exact=options.filter(o=>undone.some(t=>t.suit===o.card.suit && t.value===o.card.value));
   if(exact.length){
     // exact 중에서도 'single'(그 수트의 유일한 패)이 가장 위급하다 — 그
@@ -860,7 +895,8 @@ function resolveTrick(){
   // new trick communication opportunity
   G.players.forEach(p=>{
     if(p.isHuman||p.commUsed||!commAllowedNow())return;
-    const commChance=hasUrgentCommOpportunity(p)?0.95:0.25;
+    const urgent2=hasUrgentCommOpportunity(p)||findCriticalOwnTask(p)||findDangerousSingle(p);
+    const commChance=urgent2?0.95:0.25;
     if(Math.random()<commChance){
       const pick=pickAiCommOption(p);
       if(pick){
@@ -1055,6 +1091,30 @@ function taskOrderOK(t){
 // 트릭을 가져가 버려서 즉시 미션이 실패한다. 리드를 고려 중인 대원(pIdx)
 // 본인의 과제 카드는 이미 myHits/foreignHits 로직이 별도로 정확히
 // 처리하므로 여기서는 제외한다.
+/* 무전(radio)으로 이미 공개된 정보도 카드 카운팅과 마찬가지로 "안다"고
+   취급해야 한다. 특히 [유일] 태그는 그 대원이 해당 수트를 딱 한 장만
+   가지고 있다는 뜻이라, 리드 수트가 그 수트라면 규칙상 무조건 그 카드를
+   내야 한다(수트를 따라야 하고 낼 수 있는 카드가 그것 하나뿐이므로).
+   즉 "이길 것 같다"가 아니라 "그 카드가 100% 나온다"는 확정 정보다.
+   이걸 무시하면, 상대가 무전으로 "초록8 유일"이라 밝혔는데도 초록7
+   과제 카드를 그대로 내서 확정적으로 지는 사고가 난다. */
+function certainCommThreat(pIdx,card,hypothetical){
+  if(card.suit==='R') return false; // 우주선은 어차피 일반 수트 위협을 다 이김
+  const ledSuit=hypothetical[0].card.suit;
+  if(card.suit!==ledSuit) return false;
+  const actedSeats=new Set(hypothetical.map(p=>p.player));
+  for(let q=0;q<4;q++){
+    if(q===pIdx || actedSeats.has(q)) continue;
+    const pl=G.players[q];
+    if(!pl.commUsed || !pl.commCard || pl.commTag!=='single') continue;
+    const cc=pl.commCard;
+    if(cc.suit!==ledSuit) continue; // 그 대원의 유일패가 이번 리드 수트가 아니면 강제되지 않음
+    if(!pl.hand.some(h=>h.suit===cc.suit && h.value===cc.value)) continue; // 이미 냈음
+    if(cc.value>card.value) return true; // 수트를 반드시 따라야 하고 낼 수 있는 카드가 이것뿐 → 확정 위협
+  }
+  return false;
+}
+
 function suitLeadDangerValue(suit,pIdx){
   let danger=null;
   for(const p of G.players){
@@ -1080,13 +1140,14 @@ function aiChooseCard(pIdx,legal){
     const hypothetical=G.trick.plays.concat([{player:pIdx,card}]);
     const leader=trickLeaderOf(hypothetical);
     const wouldWin=leader===pIdx;
+    const isLeading=G.trick.plays.length===0; // 내가 이 트릭의 첫 카드를 내는 경우 — 리드 수트를 확정짓는 선택
     let score=0;
 
     if(mustNotWin && wouldWin){
       score -= 500;
     }
 
-    if(G.trick.plays.length===0){
+    if(isLeading){
       // 이 카드로 트릭을 리드하는 경우 — 위에서 설명한 "강제 공개" 위험을
       // 점검한다. 내가 내는 카드가 그 위험한 값보다 높으면 안전하다(내가
       // 먼저 이기고 있을 것이므로), 낮거나 같으면 위험을 피해 크게 감점한다.
@@ -1112,6 +1173,11 @@ function aiChooseCard(pIdx,legal){
         score += -10;
       } else if(!orderOK){
         score += -20;
+      } else if(certainCommThreat(pIdx,card,hypothetical)){
+        // 지금은 이기고 있는 걸로 계산되지만, 아직 안 낸 대원이 무전으로
+        // "이 수트 유일패가 이 카드보다 높다"고 이미 밝혔다면 그 대원은
+        // 규칙상 반드시 그 카드를 내게 되어 있다 — 사실상 확정 패배다.
+        score += -10;
       } else {
         // 현재 트릭 판돈만으로 "이기고 있다"고 해도, 아직 카드를 낼 대원이
         // 남아있다면 더 높은 같은 수트 카드나 우주선이 나와서 뒤집힐 수 있다.
@@ -1176,7 +1242,14 @@ function aiChooseCard(pIdx,legal){
       }
     }
     if(!myHits.length && !foreignHits.length){
-      if(wouldWin) score-=2;
+      // 이 카드 자체는 이번 트릭의 과제와 무관해도, 트릭을 이기면 다음 트릭의
+      // 리드권을 갖는다. 내 과제가 아직 남아있다면 리드권이 있어야 내가
+      // 원하는 타이밍에 내 과제 수트를 이끌어내 완수 기회를 만들 수 있으므로
+      // 사소한 트릭이라도 적극적으로 가져오는 게 유리하다. 반대로 내 과제가
+      // 이미 다 끝났다면, 굳이 트릭을 가져와 쓸만한 카드를 낭비하기보다는
+      // 아직 과제가 남은 동료 쪽으로 자연스럽게 주도권이 가도록 양보한다.
+      const iHavePendingTask=G.pendingTasks.some(t=>!t.done && t.owner===pIdx);
+      if(wouldWin) score += iHavePendingTask ? 4 : -2;
       // 이 카드 자체는 과제 카드가 아니지만, 아직 못 끝낸 과제와 같은 수트라면
       // 그 수트를 우선적으로 내(리드하거나, 어차피 버릴 때 이 수트부터) 과제
       // 카드가 나올 기회를 만든다. 이게 없으면 AI가 미션과 무관한 수트만
@@ -1192,8 +1265,23 @@ function aiChooseCard(pIdx,legal){
       const myHand=G.players[pIdx].hand;
       const relatedTasks=G.pendingTasks.filter(t=>!t.done && t.suit===card.suit &&
         taskOrderOK(t) &&
-        !myHand.some(h=>h.suit===t.suit && h.value===t.value)).length;
-      if(relatedTasks) score += 7*relatedTasks;
+        !myHand.some(h=>h.suit===t.suit && h.value===t.value));
+      // 안전한 경우: 이 카드가 그 과제 값보다 낮다 — 수트를 이끌어도 과제
+      // 주인이 자기 과제 카드로 내 카드를 충분히 이길 수 있으니 도움이 된다.
+      const safeHelp=relatedTasks.filter(t=>card.value<t.value).length;
+      if(safeHelp) score += 7*safeHelp;
+      // 위험한 경우: 이 카드가 남의 미완수 과제보다 높다. 특히 리드할 때는
+      // 그 즉시 이 수트가 이번 트릭의 리드 수트로 확정되고, 과제 주인이
+      // 수트를 따라야 하는데 마침 이 카드보다 낮은 자기 과제 카드밖에
+      // 남지 않았다면 억지로 과제 카드를 내서 확정 패배로 이어질 수 있다.
+      // (예: 로켓4 커맨더가 파랑8 같은 높은 파랑 카드로 리드하면, 파랑4
+      // 과제를 가진 동료가 낮은 파랑밖에 없을 때 그대로 과제가 깨진다.)
+      // 리드가 아니라 강제로 수트를 따르는 상황이라면 애초에 선택의 여지가
+      // 없으므로 이 페널티를 적용하지 않는다.
+      if(isLeading){
+        const dangerousLead=relatedTasks.filter(t=>card.value>t.value && t.owner!==pIdx).length;
+        if(dangerousLead) score -= 60*dangerousLead;
+      }
     }
 
     if(card.suit==='R') score -= 3;
@@ -1203,7 +1291,21 @@ function aiChooseCard(pIdx,legal){
     // 낮은 로켓만 남아 그 카드가 나중에 아군의 트릭을 가로채는 사고를 막는다.
     // 반대로 낮은 카드부터 버리면 위협적인 카드가 계속 손에 쌓여있다가
     // 엉뚱한 순간에 튀어나와 트릭을 뺏어가게 된다.
-    if(wouldWin) score -= card.value; else score += card.value;
+    //
+    // 단, 내가 아직 못 끝낸 내 과제 카드와 같은 수트의 다른 카드는 예외다.
+    // 그 수트가 나중에 다시 리드됐을 때 과제 카드를 내지 않고도 수트를
+    // 따를 수 있는 "방패패"이기 때문에, 이길 수 없는 트릭이라고 무작정
+    // 높은 순으로 먼저 버리면 방패패부터 사라져서 결국 과제 카드를
+    // 안전하지 않은 트릭에서 억지로 내야 하는 상황에 몰릴 수 있다. 이런
+    // 카드는 다른 수트의 동급 카드보다 우선순위를 낮춰(가중치 축소) 정말
+    // 버릴 카드가 이것뿐일 때만 버리도록 한다.
+    if(wouldWin){
+      score -= card.value;
+    } else {
+      const isOwnTaskShield=!myHits.length && G.pendingTasks.some(t=>!t.done && t.owner===pIdx &&
+        t.suit===card.suit && !(t.value===card.value));
+      score += isOwnTaskShield ? card.value*0.3 : card.value;
+    }
     score += Math.random()*1; // 완전 동점일 때만 미세하게 갈라주는 용도
     if(score>bestScore){bestScore=score;best=card;}
   }
@@ -1238,28 +1340,35 @@ function render(){
 function renderMenu(){
   let cards=MISSIONS.map(m=>{
     const done=completed.has(m.id);
+    const sel=_selectedMissions.has(m.id);
     const toks=m.tokens.map(t=>`<span class="tok">${t}</span>`).join('');
     const desc=m.special?m.special.desc:(m.tasks?`과제 ${m.tasks}개`:'');
-    return `<div class="mcard ${done?'done':''}" data-mission="${m.id}">
+    return `<div class="mcard ${done?'done':''} ${sel?'selected':''}" data-mission="${m.id}">
       ${done?'<span class="check">✓</span>':''}
       <div class="num">${String(m.id).padStart(2,'0')}</div>
       <div class="tag">${desc}</div>
       <div class="tokens">${toks}</div>
     </div>`;
   }).join('');
+  const selecting=_selectedMissions.size>0;
+  const selBar=selecting?`
+  <div class="banner" style="border-left-color:var(--blue);display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+    <span class="pill">${_selectedMissions.size}개 선택됨</span>
+    <button class="ghost small" id="markDoneBtn" type="button" style="border-color:var(--green);color:var(--green);">✓ 달성</button>
+    <button class="ghost small" id="markUndoneBtn" type="button">미달성</button>
+    <button class="ghost small" id="clearSelBtn" type="button">선택 해제</button>
+  </div>`:'';
   return `
   <header class="top">
     <div class="title">스페이스 크루<span class="ver-tag">${APP_VERSION}</span><small>나인 행성 탐사 · 솔로 모드 · 나 + AI 3인</small></div>
     <div class="flexrow">
       <span class="pill">완료 ${completed.size} / 50</span>
-      <button class="ghost small" id="exportSaveBtn" type="button">내보내기</button>
-      <button class="ghost small" id="importSaveBtn" type="button">가져오기</button>
-      <input type="file" id="importFileInput" accept="application/json" style="display:none;">
       <button class="ghost small" id="resetSaveBtn" type="button">초기화</button>
     </div>
   </header>
-  <div class="banner">진행 상황은 이 브라우저에 자동 저장되지만, 새 버전 파일을 열면 저장 공간이 분리되어 이전 기록이 안 보일 수 있습니다. 버전을 올리기 전에 <b>내보내기</b>로 저장 파일을 받아두고, 새 버전에서 <b>가져오기</b>로 불러오면 완료 기록이 이어집니다.</div>
+  ${selBar}
   <div class="banner">임무를 선택하세요. 로켓4를 가진 대원이 커맨더가 되어 과제 분배와 첫 트릭을 시작합니다. 색깔카드 값이 높을수록 강하며, 로켓은 항상 트럼프입니다.</div>
+  <div class="banner">미션 카드를 길게 누르면 선택 모드로 진입합니다. 여러 미션을 선택한 뒤 위쪽 버튼으로 달성/미달성 상태를 수동으로 바꿀 수 있습니다.</div>
   <div id="missionGrid" style="overflow-y:auto;">${cards}</div>`;
 }
 
@@ -1526,13 +1635,41 @@ function renderStoryModal(){
 }
 
 /* ============ EVENT HANDLERS ============ */
+let _missionLongPressTimer=null;
+let _missionLongPressFired=false;
 function goToMission(id){
   if(storyDismissed.has(id)) startMission(id);
   else { _storyModalState={id, mode:'preStart'}; render(); }
 }
 function attachHandlers(){
   document.querySelectorAll('[data-mission]').forEach(el=>{
-    el.onclick=()=>goToMission(parseInt(el.dataset.mission));
+    const id=parseInt(el.dataset.mission);
+    const cancelTimer=()=>{ if(_missionLongPressTimer){clearTimeout(_missionLongPressTimer);_missionLongPressTimer=null;} };
+    el.addEventListener('pointerdown',()=>{
+      _missionLongPressFired=false;
+      cancelTimer();
+      _missionLongPressTimer=setTimeout(()=>{
+        _missionLongPressFired=true;
+        toggleMissionSelect(id);
+      },450);
+    });
+    // pointerup/leave/cancel은 롱프레스 타이머만 정리한다. 실제 탭 동작은
+    // 아래 'click' 이벤트로 처리한다 — 스크롤 후 탭할 때처럼 손가락이 살짝
+    // 움직이면 브라우저가 그 제스처를 스크롤로 판단해 pointerup 대신
+    // pointercancel만 보내고 pointerup 자체가 발생하지 않는 경우가 있는데,
+    // 이전에는 탭 동작을 pointerup에 직접 매달아둬서 이런 경우 터치가 아예
+    // 씹혔다(특히 목록 아래쪽, 스크롤이 필요한 미션일수록 자주 발생).
+    // 표준 'click' 이벤트는 브라우저가 스크롤/탭을 자체적으로 구분해 진짜
+    // 탭에서만 안정적으로 발생시켜주므로 이 문제가 없다.
+    el.addEventListener('pointerup',cancelTimer);
+    el.addEventListener('pointerleave',cancelTimer);
+    el.addEventListener('pointercancel',cancelTimer);
+    el.addEventListener('contextmenu',(e)=>e.preventDefault());
+    el.addEventListener('click',()=>{
+      if(_missionLongPressFired){ _missionLongPressFired=false; return; } // long press already handled this tap
+      if(_selectedMissions.size>0) toggleMissionSelect(id);
+      else goToMission(id);
+    });
   });
   const toMenu=document.getElementById('toMenu');
   if(toMenu) toMenu.onclick=()=>openMissionSelect();
@@ -1584,24 +1721,17 @@ function attachHandlers(){
   const resetBtn=document.getElementById('resetSaveBtn');
   if(resetBtn) resetBtn.onclick=()=>{
     askConfirm('완료 기록과 진행 상황을 모두 초기화할까요? 되돌릴 수 없습니다.', ()=>{
-      G=null; completed=new Set(); attempts={};
+      G=null; completed=new Set(); attempts={}; _selectedMissions=new Set();
       saveGame();
       render();
     });
   };
-  const exportBtn=document.getElementById('exportSaveBtn');
-  if(exportBtn) exportBtn.onclick=exportSave;
-  const importBtn=document.getElementById('importSaveBtn');
-  const importInput=document.getElementById('importFileInput');
-  if(importBtn && importInput) importBtn.onclick=()=>importInput.click();
-  if(importInput) importInput.onchange=(e)=>{
-    const file=e.target.files && e.target.files[0];
-    if(!file)return;
-    const reader=new FileReader();
-    reader.onload=()=>importSaveFromText(reader.result);
-    reader.readAsText(file);
-    importInput.value='';
-  };
+  const markDoneBtn=document.getElementById('markDoneBtn');
+  if(markDoneBtn) markDoneBtn.onclick=()=>markSelectedMissions(true);
+  const markUndoneBtn=document.getElementById('markUndoneBtn');
+  if(markUndoneBtn) markUndoneBtn.onclick=()=>markSelectedMissions(false);
+  const clearSelBtn=document.getElementById('clearSelBtn');
+  if(clearSelBtn) clearSelBtn.onclick=()=>clearMissionSelection();
 
   document.querySelectorAll('.target-btn').forEach(el=>{
     el.onclick=()=>{
