@@ -223,7 +223,7 @@ a.back:hover{color:var(--ink);}
 })();
 
 /* ============ CONSTANTS ============ */
-const APP_VERSION='v0.121';
+const APP_VERSION='v0.123';
 const SUITS=['P','B','G','Y'];
 const SUIT_NAME={P:'분홍',B:'파랑',G:'초록',Y:'노랑',R:'로켓'};
 const SUIT_ICON={P:'◆',B:'▲',G:'■',Y:'●',R:'🚀'};
@@ -567,11 +567,14 @@ function processTaskPick(){
   if(player.isHuman){ render(); return; } // wait for click
   // AI heuristic: 손에 든 카드와 일치하는 과제(직접 들고 있으면 타이밍을
   // 스스로 조절할 수 있어 기본적으로 유리)를 우선하되, 그중에서도 값이
-  // 1~2처럼 극히 낮은 과제는 직접 들고 있어도 트릭을 이기기 매우 어렵다.
+  // 낮은 과제는 직접 들고 있어도 트릭을 이기기 어렵다. 최소 5 이상은
+  // 되어야 비교적 안전하고, 3~4는 여전히 낮은 축(9장 중 하위권)이라 다른
+  // 대원 손에 더 높은 카드가 있을 가능성이 커서 스스로 이기기보다 팀
+  // 동료가 리드를 잘 맞춰줘야 겨우 완수되는, 통제하기 어려운 과제다.
   // 값이 더 높은(=더 쉬운) 매치가 있으면 그것을 먼저 고르고, 낮은 값
   // 매치만 있을 때만 어쩔 수 없이 그것을 선택한다.
   const handMatches=avail.filter(t=>player.hand.some(c=>c.suit===t.suit&&c.value===t.value));
-  let choice=handMatches.find(t=>t.value>2) || handMatches[0];
+  let choice=handMatches.find(t=>t.value>4) || handMatches.find(t=>t.value>2) || handMatches[0];
   if(!choice){
     // else prefer suit AI holds most of
     const counts={};avail.forEach(t=>counts[t.suit]=(counts[t.suit]||0)+1);
