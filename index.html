@@ -231,7 +231,7 @@ const SUIT_NAME={P:'분홍',B:'파랑',G:'초록',Y:'노랑',R:'로켓'};
 const SUIT_ICON={P:'◆',B:'▲',G:'■',Y:'●',R:'🚀'};
 const SUIT_COLOR={P:'var(--pink)',B:'var(--blue)',G:'#1f8a52',Y:'#b8860b',R:'var(--gold)'};
 function suitSpan(suit,text){return `<span style="color:${SUIT_COLOR[suit]};font-weight:600;">${text}</span>`;}
-function cardSpan(card){return suitSpan(card.suit,`${SUIT_NAME[card.suit]} ${card.value}`);}
+function cardSpan(card){return suitSpan(card.suit,`${SUIT_ICON[card.suit]}${card.value}`);}
 const PLAYERS=[
   {id:0,name:'나 (지휘 후보)',isHuman:true},
   {id:1,name:'AI-리라',isHuman:false},
@@ -1490,7 +1490,15 @@ function aiChooseCard(pIdx,legal){
         // 낮은 숫자 과제 카드를 무작정 일찍 내지 않도록 한다.
         const remainingActors=4-hypothetical.length;
         const threat=remainingActors>0?remainingThreatCount(pIdx,card):0;
-        score += 130 - threat*22;
+        // 리드 상황처럼 아직 카드를 낼 대원이 많이 남아있을수록 위협 카드
+        // 한 장이 실제로 뒤집을 확률도 커지므로, 위협패 페널티 가중치를
+        // 남은 대원 수에 비례해 키운다(리드=3명 남음 → 훨씬 무겁게).
+        // 거기에 더해 카드 값 자체가 낮으면(예: 5 이하) 그 위에 존재할 수
+        // 있는 카드가 원천적으로 많다는 뜻이므로 추가 페널티를 더해서,
+        // 낮은 과제 카드를 안전장치 없이 선(先)으로 함부로 내지 않게 한다.
+        const threatWeight = 14 + remainingActors*6;
+        const lowCardPenalty = card.value<=5 ? (6-card.value)*15 : 0;
+        score += 130 - threat*threatWeight - lowCardPenalty;
       }
     }
     if(foreignHits.length){
