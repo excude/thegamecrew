@@ -225,7 +225,7 @@ a.back:hover{color:var(--ink);}
 })();
 
 /* ============ CONSTANTS ============ */
-const APP_VERSION='v0.127';
+const APP_VERSION='v0.128';
 const SUITS=['P','B','G','Y'];
 const SUIT_NAME={P:'분홍',B:'파랑',G:'초록',Y:'노랑',R:'로켓'};
 const SUIT_ICON={P:'◆',B:'▲',G:'■',Y:'●',R:'🚀'};
@@ -1073,19 +1073,187 @@ function afterFirstTrickHook(){
 }
 
 /* ============ AI PLAY ============ */
+/* ---- 정보-공정 몬테카를로 카드 선택 시뮬레이션 ----
+   예전엔 AI가 모든 대원의 실제 손패를 미리 아는 치팅성 시뮬레이션이 있었고,
+   실제로는 알 수 없는 정보를 쓰는 것이라 제거된 바 있다. 이번 것은 다르다:
+   상대의 진짜 손패는 절대 들여다보지 않는다. 대신 공개 정보(지금까지 나온
+   모든 카드, 각자 손에 남은 카드 "장수", 무전으로 스스로 공개한 카드 1장)
+   만으로 그럴듯한 가상의 손패 분배를 매번 새로 무작위로 만들어(결정화,
+   determinization), 그 가상 세계 안에서 게임을 끝까지 진행해본다. 카드를
+   내기 전, 낼 수 있는 각 후보 카드에 대해 이런 가상 세계를 SIM_COUNT번
+   만들어 미션 성공률을 재고, 그 비율이 가장 높은 카드를 실제로 낸다.
+
+   SIM_COUNT=45로 정했다: 요청대로 최소 30회는 넘기면서, 트릭 리드처럼
+   후보 카드가 많을 때(최대 10장 안팎)도 한 번의 카드 선택에 도는 총
+   시뮬레이션 횟수가 수백 회 수준에 머물러 버벅임 없이 매 수마다 새로
+   계산할 수 있는 균형점이다. */
+const SIM_COUNT=45;
+
+function simBuildRandomWorld(pIdx){
+  // 공개 정보만 사용: 실제 상대 손패는 절대 참조하지 않는다.
+  const known=new Set();
+  G.players[pIdx].hand.forEach(c=>known.add(ckey(c)));
+  G.discardAll.forEach(c=>known.add(ckey(c)));
+  let pool=shuffle(freshDeck().filter(c=>!known.has(ckey(c))));
+  const others=[0,1,2,3].filter(i=>i!==pIdx);
+  const worldHands={};others.forEach(i=>worldHands[i]=[]);
+  const singleLock={};
+  // 무전으로 이미 공개된 카드는 그 대원 손에 고정한다 (공개 정보이므로 치팅이 아님).
+  others.forEach(i=>{
+    const p=G.players[i];
+    if(p.commUsed && p.commCard){
+      const idx=pool.findIndex(c=>ckey(c)===ckey(p.commCard));
+      if(idx!==-1){
+        worldHands[i].push(pool.splice(idx,1)[0]);
+        if(p.commTag==='single') singleLock[i]=p.commCard.suit; // 유일패면 그 수트의 다른 카드는 못 들고 있음
+      }
+    }
+  });
+  others.forEach(i=>{
+    const target=G.players[i].hand.length; // 실제 손패 장수(공개 정보)만큼 채운다
+    let guard=0;
+    while(worldHands[i].length<target && pool.length && guard<1000){
+      guard++;
+      let idx=pool.findIndex(c=>!(singleLock[i]&&c.suit===singleLock[i]));
+      if(idx===-1) idx=0;
+      worldHands[i].push(pool.splice(idx,1)[0]);
+    }
+  });
+  return worldHands;
+}
+function simCloneAchieveState(a){
+  const out={};
+  for(const k in a){ const v=a[k]; out[k]=(v instanceof Set)?new Set(v):v; }
+  return out;
+}
+function simBuildState(pIdx,candidateCard){
+  const worldHands=simBuildRandomWorld(pIdx);
+  const simPlayers=G.players.map((p,i)=>({
+    ...p,
+    hand:(i===pIdx
+      ? p.hand.filter(c=>!(c.suit===candidateCard.suit&&c.value===candidateCard.value))
+      : worldHands[i]).map(c=>({...c})),
+    commCard:p.commCard?{...p.commCard}:null,
+  }));
+  const simTrick={
+    plays:G.trick.plays.map(pl=>({player:pl.player,card:{...pl.card}})),
+    ledSuit:G.trick.ledSuit,
+    lastPlayed:pIdx,
+  };
+  simTrick.plays.push({player:pIdx,card:{...candidateCard}});
+  if(simTrick.plays.length===1) simTrick.ledSuit=candidateCard.suit;
+  const simDiscard=G.discardAll.map(c=>({...c}));
+  simDiscard.push({...candidateCard});
+  return {
+    mission:G.mission,
+    players:simPlayers,
+    pendingTasks:G.pendingTasks.map(t=>({...t})),
+    trick:simTrick,
+    trickNumber:G.trickNumber,
+    turn:(pIdx+1)%4,
+    commanderIndex:G.commanderIndex,
+    targets:{...G.targets},
+    achieveState:simCloneAchieveState(G.achieveState),
+    discardAll:simDiscard,
+    phase:'play',
+  };
+}
+// 실제 게임의 resolveTrick/AI 무전/randomPass 흐름을 log·render·setTimeout 없이
+// 동기적으로 끝까지 재현한다. 미션 성공이면 true, 실패(또는 끝내 못 끝내면) false.
+function simPlayOut(){
+  while(true){
+    while(G.trick.plays.length<4){
+      const cur=G.turn;
+      const legal=legalCards(G.players[cur].hand,G.trick.ledSuit);
+      const card=legal.length===1?legal[0]:aiChooseCard(cur,legal);
+      G.players[cur].hand=G.players[cur].hand.filter(c=>!(c.suit===card.suit&&c.value===card.value));
+      G.trick.plays.push({player:cur,card});
+      G.discardAll.push(card);
+      if(G.trick.plays.length===1) G.trick.ledSuit=card.suit;
+      const pl=G.players[cur];
+      if(pl.commCard && pl.commCard.suit===card.suit && pl.commCard.value===card.value){ pl.commCard=null; pl.commTag=null; }
+      G.turn=(cur+1)%4;
+    }
+    const winner=trickLeaderOf(G.trick.plays);
+    const winCard=G.trick.plays.find(p=>p.player===winner).card;
+    G.players[winner].wins++;
+    let failed=false;
+    for(const play of G.trick.plays){
+      const t=G.pendingTasks.find(t=>!t.done && t.suit===play.card.suit && t.value===play.card.value);
+      if(t){
+        if(t.owner!==winner){ failed=true; break; }
+        if(t.tokenTag){
+          const others=G.pendingTasks.filter(o=>o!==t && !o.done && o.tokenTag && o.tokenTag!=='Ω' && o.rank<t.rank);
+          if(t.tokenTag!=='Ω' && others.length){ failed=true; break; }
+          if(t.tokenTag==='Ω'){
+            const remaining=G.pendingTasks.filter(o=>o!==t && !o.done);
+            if(remaining.length){ failed=true; break; }
+          }
+        }
+        t.done=true;
+        if(G.mission.special && G.mission.special.type==='lastInLastTrick' && t.tokenTag==='Ω' && G.trickNumber!==MAXTRICKS){ failed=true; break; }
+      }
+    }
+    if(!failed && checkSpecialAfterTrick(winner,winCard)) failed=true;
+    if(failed) return false;
+    const allDone=G.pendingTasks.length && G.pendingTasks.every(t=>t.done);
+    if(allDone||checkSpecialAchieved()) return true;
+    const undoneCount=G.pendingTasks.filter(t=>!t.done).length;
+    if(undoneCount>MAXTRICKS-G.trickNumber) return false;
+    const wasTrick1=G.trickNumber===1;
+    G.trick={plays:[],ledSuit:null,lastPlayed:null};
+    G.trickNumber++;
+    G.turn=winner;
+    if(G.trickNumber>MAXTRICKS) return false;
+    if(wasTrick1 && G.mission.special && G.mission.special.type==='randomPass'){
+      for(let i=0;i<4;i++){
+        const from=G.players[(i+1)%4];
+        if(!from.hand.length) continue;
+        const idx=Math.floor(Math.random()*from.hand.length);
+        const [card]=from.hand.splice(idx,1);
+        G.players[i].hand.push(card);
+      }
+    }
+    G.players.forEach(p=>{
+      if(p.commUsed||!commAllowedNow()) return;
+      const urgent=hasUrgentCommOpportunity(p)||findCriticalOwnTask(p)||findDangerousSingle(p);
+      if(Math.random()<(urgent?0.95:0.25)){
+        const pick=pickAiCommOption(p);
+        if(pick){ p.commCard=pick.card; p.commTag=pick.tag; p.commUsed=true; }
+      }
+    });
+  }
+}
+function simRunOnce(pIdx,candidateCard){
+  const simG=simBuildState(pIdx,candidateCard);
+  const realG=G;
+  G=simG;
+  try{ return simPlayOut(); }
+  finally{ G=realG; }
+}
+// 후보 카드마다 SIM_COUNT번 가상 세계를 시뮬레이션해 미션 성공률을 재고,
+// 가장 높은 카드를 고른다. 동률이면 기존 휴리스틱 점수로 한 번 더 가른다.
+function chooseCardBySimulation(pIdx,legal){
+  if(legal.length===1) return legal[0];
+  let best=null,bestRate=-1;
+  for(const card of legal){
+    let wins=0;
+    for(let i=0;i<SIM_COUNT;i++){ if(simRunOnce(pIdx,card)) wins++; }
+    const rate=wins/SIM_COUNT;
+    if(rate>bestRate){ bestRate=rate; best=[card]; }
+    else if(rate===bestRate){ best.push(card); }
+  }
+  if(best.length===1) return best[0];
+  return aiChooseCard(pIdx,best);
+}
 function maybeAIPlay(){
   if(G.phase!=='play')return;
   const p=G.players[G.turn];
   if(p.isHuman)return;
   const legal=legalCards(p.hand,G.trick.ledSuit);
-  const card=aiChooseCard(G.turn,legal);
+  const card=chooseCardBySimulation(G.turn,legal);
   setTimeout(()=>playCard(G.turn,card),500);
 }
-
-/* ---- full-information trick simulation (REMOVED) ----
-   이전에 AI가 모든 대원의 손패를 미리 아는 것처럼 "안전한 카드만" 골라 내던
-   로직은 실제로는 존재하지 않는 정보를 이용하는 치팅이라 제거함.
-   AI는 이제 지금까지 실제로 테이블에 나온 카드(공개 정보)만으로 판단한다. */
 
 /* ---- card counting (공개 정보만 사용) ----
    전체 덱 구성은 고정돼 있고, "이미 낸 카드"와 "내 손패"는 공개 정보이므로
