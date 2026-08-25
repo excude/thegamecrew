@@ -225,7 +225,7 @@ a.back:hover{color:var(--ink);}
 })();
 
 /* ============ CONSTANTS ============ */
-const APP_VERSION='v0.128';
+const APP_VERSION='v0.129';
 const SUITS=['P','B','G','Y'];
 const SUIT_NAME={P:'분홍',B:'파랑',G:'초록',Y:'노랑',R:'로켓'};
 const SUIT_ICON={P:'◆',B:'▲',G:'■',Y:'●',R:'🚀'};
@@ -452,6 +452,9 @@ function startMission(id){
     result:null,
     discardAll:[], // every card played so far this mission (across all tricks) — public info, used for card-counting risk estimates
   };
+  if(G.mission.special && G.mission.special.desc){
+    log(`🔶 특수조건: ${G.mission.special.desc}`,'specialcond');
+  }
   log(`미션 ${id} 시작 (시도 #${G.attemptNo}). 로켓4 보유자: ${G.players[commanderIndex].name} → 커맨더.`,'sys');
   advanceFromIntro();
 }
@@ -1643,7 +1646,7 @@ function renderTargetPick(){
   ${myHandPanel()}
   <div class="panel logpanel" id="logOpenBtn">
     <div class="eyebrow"><span>교신 기록</span><span class="tap-hint">탭하여 전체보기</span></div>
-    <div id="log">${specialConditionLogLine()}${G.log.slice().reverse().map(l=>`<div class="${l.cls}">${l.msg}</div>`).join('')}</div>
+    <div id="log">${G.log.slice().reverse().map(l=>`<div class="${l.cls}">${l.msg}</div>`).join('')}</div>
   </div>`;
 }
 let _targetSel=[];
@@ -1699,7 +1702,7 @@ function renderDistress(){
   ${pickerNeeded?'':myHandPanel()}
   <div class="panel logpanel" id="logOpenBtn">
     <div class="eyebrow"><span>교신 기록</span><span class="tap-hint">탭하여 전체보기</span></div>
-    <div id="log">${specialConditionLogLine()}${G.log.slice().reverse().map(l=>`<div class="${l.cls}">${l.msg}</div>`).join('')}</div>
+    <div id="log">${G.log.slice().reverse().map(l=>`<div class="${l.cls}">${l.msg}</div>`).join('')}</div>
   </div>`;
 }
 function renderComm(){
@@ -1722,7 +1725,7 @@ function renderComm(){
   ${myHandPanel('내 패 (통신 참고용)')}
   <div class="panel logpanel" id="logOpenBtn">
     <div class="eyebrow"><span>교신 기록</span><span class="tap-hint">탭하여 전체보기</span></div>
-    <div id="log">${specialConditionLogLine()}${G.log.slice().reverse().map(l=>`<div class="${l.cls}">${l.msg}</div>`).join('')}</div>
+    <div id="log">${G.log.slice().reverse().map(l=>`<div class="${l.cls}">${l.msg}</div>`).join('')}</div>
   </div>`;
 }
 
@@ -1730,13 +1733,6 @@ function renderComm(){
 function taskHintFor(c){
   if(!G || !G.pendingTasks) return null;
   return G.pendingTasks.find(t=>!t.done && t.suit===c.suit && t.value===c.value) || null;
-}
-// 교신 기록 패널/전체보기 모달 맨 위에 항상 고정으로 붙는 줄. 특수 규칙이 있는
-// 미션은 시간이 지나 로그가 쌓여도 규칙을 잊어버리기 쉬우므로, 실제 G.log에
-// 끼워넣는 게 아니라 렌더링 시점에 매번 맨 앞에 붙여 항상 최상단에 보이게 한다.
-function specialConditionLogLine(){
-  if(!G || !G.mission || !G.mission.special || !G.mission.special.desc) return '';
-  return `<div class="specialcond">🔶 특수조건: ${G.mission.special.desc}</div>`;
 }
 function taskDotHtml(c){
   const t=taskHintFor(c);
@@ -1778,7 +1774,7 @@ function renderBoard(){
   </div>
   <div class="panel logpanel" id="logOpenBtn">
     <div class="eyebrow"><span>교신 기록</span><span class="tap-hint">탭하여 전체보기</span></div>
-    <div id="log">${specialConditionLogLine()}${G.log.slice().reverse().map(l=>`<div class="${l.cls}">${l.msg}</div>`).join('')}</div>
+    <div id="log">${G.log.slice().reverse().map(l=>`<div class="${l.cls}">${l.msg}</div>`).join('')}</div>
   </div>`;
 }
 
@@ -1796,7 +1792,7 @@ function renderResult(){
   </div>
   <div class="panel logpanel" id="logOpenBtn">
     <div class="eyebrow"><span>교신 기록</span><span class="tap-hint">탭하여 전체보기</span></div>
-    <div id="log">${specialConditionLogLine()}${G.log.slice().reverse().map(l=>`<div class="${l.cls}">${l.msg}</div>`).join('')}</div>
+    <div id="log">${G.log.slice().reverse().map(l=>`<div class="${l.cls}">${l.msg}</div>`).join('')}</div>
   </div>`;
 }
 
@@ -1825,7 +1821,7 @@ function renderLogModal(){
           <button class="ghost small" id="logModalClose" type="button">닫기 ✕</button>
         </div>
       </div>
-      <div class="modal-log-body" id="logModalBody">${specialConditionLogLine()}${entries.length? entries.map(l=>`<div class="${l.cls}">${l.msg}</div>`).join(''):'<div class="sys">기록이 없습니다.</div>'}</div>
+      <div class="modal-log-body" id="logModalBody">${entries.length? entries.map(l=>`<div class="${l.cls}">${l.msg}</div>`).join(''):'<div class="sys">기록이 없습니다.</div>'}</div>
     </div>
   </div>`;
 }
