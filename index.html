@@ -591,14 +591,24 @@ function processTaskPick(){
   // 내가 원하는 타이밍(다른 위협 카드들이 정리된 뒤)에 직접 낼 수 있기
   // 때문이다.
   const handMatches=avail.filter(t=>player.hand.some(c=>c.suit===t.suit&&c.value===t.value));
-  let choice=handMatches.find(t=>t.value>4);
+  // 값이 5 이상인 매치 후보라도 무작정 "배열에서 먼저 나온 것"을 고르면 안 된다.
+  // 예: 손에 ●6·●5가 있을 때 ●5를 과제로 골라도, 그 수트의 ●7~9나 우주선이
+  // 아직 여러 장 안 나오고 남의 손/덱에 남아있다면 ●6은 그걸 다 못 이기는
+  // 애매한 높이라 사실상 보험이 못 된다 — 남은 위협패 수(카드 카운팅, aiChooseCard와
+  // 동일하게 remainingThreatCount 사용)가 실제 안전도를 결정한다. 위협패가 2장
+  // 이하로 충분히 적을 때만 "안전한 매치"로 인정하고, 그중에서도 위협이 가장
+  // 적은(동률이면 값이 더 높은) 걸 고른다.
+  const rankedSafeMatches=handMatches.filter(t=>t.value>4)
+    .map(t=>({t,threat:remainingThreatCount(pIdx,{suit:t.suit,value:t.value})}))
+    .sort((a,b)=>a.threat-b.threat || b.t.value-a.t.value);
+  let choice = (rankedSafeMatches.length && rankedSafeMatches[0].threat<=2) ? rankedSafeMatches[0].t : null;
   if(!choice){
     const myRockets=player.hand.filter(c=>c.suit==='R');
     const bestRocket=myRockets.length? Math.max(...myRockets.map(c=>c.value)) : 0;
     const weakRockets=bestRocket<3;
     const nonMatch=avail.filter(t=>!handMatches.includes(t));
     if(weakRockets && handMatches.length){
-      choice=handMatches.find(t=>t.value>2) || handMatches[0];
+      choice=(rankedSafeMatches[0]&&rankedSafeMatches[0].t) || handMatches.find(t=>t.value>2) || handMatches[0];
     } else if(nonMatch.length){
       const counts={};nonMatch.forEach(t=>counts[t.suit]=(counts[t.suit]||0)+1);
       const suitPref=Object.keys(counts).sort((a,b)=>{
@@ -607,7 +617,7 @@ function processTaskPick(){
       })[0];
       choice=nonMatch.find(t=>t.suit===suitPref)||nonMatch[0];
     } else {
-      choice=handMatches.find(t=>t.value>2) || handMatches[0];
+      choice=(rankedSafeMatches[0]&&rankedSafeMatches[0].t) || handMatches.find(t=>t.value>2) || handMatches[0];
     }
   }
   if(!choice){
