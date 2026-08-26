@@ -225,7 +225,7 @@ a.back:hover{color:var(--ink);}
 })();
 
 /* ============ CONSTANTS ============ */
-const APP_VERSION='v0.138';
+const APP_VERSION='v0.139';
 const SUITS=['P','B','G','Y'];
 const SUIT_NAME={P:'분홍',B:'파랑',G:'초록',Y:'노랑',R:'로켓'};
 const SUIT_ICON={P:'◆',B:'▲',G:'■',Y:'●',R:'🚀'};
@@ -240,7 +240,7 @@ const PLAYERS=[
 ];
 const MAXTRICKS=10;
 
-function M(id,tasks,tokens,special,desc){return{id,tasks,tokens:tokens||[],special:special||null,desc:desc||''};}
+function M(id,tasks,tokens,special,commBlocked){return{id,tasks,tokens:tokens||[],special:special||null,desc:'',commBlocked:!!commBlocked};}
 function S(type,params,desc){return{type,params:params||{},desc};}
 
 const MISSIONS=[
@@ -249,7 +249,7 @@ M(2,2,[]),
 M(3,2,['1','2']),
 M(4,3,[]),
 M(5,0,[],S('noWin',{},'커맨더가 지정한 대원은 이번 미션에서 트릭을 하나도 이기면 안 됩니다.')),
-M(6,3,['>','>>']),
+M(6,3,['>','>>'],null,true),
 M(7,3,['Ω']),
 M(8,3,['1','2','3']),
 M(9,0,[],S('colorOne',{},'값이 1인 색깔 카드(로켓 제외)가 트릭을 이겨야 합니다.')),
@@ -257,22 +257,22 @@ M(10,4,[]),
 M(11,4,['1'],S('noComm',{},'커맨더가 지정한 대원은 이번 미션에서 무전을 사용할 수 없습니다.')),
 M(12,4,['Ω'],S('randomPass',{},'첫 트릭 후 각 대원은 오른쪽 대원에게서 무작위 카드 1장을 받습니다.')),
 M(13,0,[],S('rocketsAny',{},'크루는 로켓 카드 1~4 각각으로 트릭을 이겨야 합니다 (순서 무관).')),
-M(14,4,['>','>>','>>>']),
+M(14,4,['>','>>','>>>'],null,true),
 M(15,4,['1','2','3','4']),
 M(16,0,[],S('noNine',{},'크루는 9로 이기는 트릭이 있으면 안 됩니다.')),
 M(17,2,[],S('noNine',{},'크루는 9로 이기는 트릭이 있으면 안 됩니다.')),
 M(18,5,[],S('disruption',{from:3},'3번째 트릭 전까지 무전을 사용할 수 없습니다.')),
 M(19,5,['1'],S('disruption',{from:3},'3번째 트릭 전까지 무전을 사용할 수 없습니다.')),
 M(20,2,[],S('assignAll',{},'커맨더가 예/아니오를 물은 뒤, 한 명에게 모든 과제를 맡깁니다.')),
-M(21,5,['1','2']),
+M(21,5,['1','2'],null,true),
 M(22,5,['>','>>','>>>','>>>>']),
 M(23,5,['1','2','3']),
 M(24,6,[]),
-M(25,6,['>','>>']),
+M(25,6,['>','>>'],null,true),
 M(26,0,[],S('twoTricksValue1',{},'값이 1인 카드로 트릭을 두 번 이겨야 합니다.')),
 M(27,3,[],S('assignAll',{},'커맨더가 예/아니오를 물은 뒤, 한 명에게 모든 과제를 맡깁니다.')),
 M(28,6,['1','Ω']),
-M(29,0,[],S('balance',{},'한 대원이 다른 대원보다 트릭을 2번 이상 더 이기면 안 됩니다.')),
+M(29,0,[],S('balance',{},'한 대원이 다른 대원보다 트릭을 2번 이상 더 이기면 안 됩니다.'),true),
 M(30,6,['>','>>','>>>']),
 M(31,6,['1','2','3']),
 M(32,7,[]),
@@ -282,7 +282,7 @@ M(35,7,['>','>>','>>>']),
 M(36,7,['1','2']),
 M(37,4,[],S('assignAll',{},'커맨더가 예/아니오를 물은 뒤, 한 명에게 모든 과제를 맡깁니다.')),
 M(38,8,[],S('disruption',{from:4},'4번째 트릭 전까지 무전을 사용할 수 없습니다.')),
-M(39,8,['>','>>','>>>']),
+M(39,8,['>','>>','>>>'],null,true),
 M(40,8,['1','2','3']),
 M(41,0,[],S('firstLastOnly',{},'지정된 대원은 첫 트릭과 마지막 트릭만 이겨야 하며, 로켓으로는 안 됩니다.')),
 M(42,9,[]),
@@ -454,6 +454,9 @@ function startMission(id){
   };
   if(G.mission.special && G.mission.special.desc){
     log(`🔶 특수조건: ${G.mission.special.desc}`,'specialcond');
+  }
+  if(G.mission.commBlocked){
+    log('🔶 특수조건: 이번 미션에서는 전원 무전을 사용할 수 없습니다.','specialcond');
   }
   log(`미션 ${id} 시작 (시도 #${G.attemptNo}). 로켓4 보유자: ${G.players[commanderIndex].name} → 커맨더.`,'sys');
   advanceFromIntro();
@@ -800,6 +803,7 @@ function hasUrgentCommOpportunity(p){
 function tagLabel(t){return t==='high'?'최고':t==='low'?'최저':'유일';}
 function commAllowedNow(pIdx){
   const sp=G.mission.special;
+  if(G.mission.commBlocked) return false; // 이번 미션은 전원 무전 사용 불가
   if(sp && sp.type==='disruption' && G.trickNumber<sp.params.from) return false;
   if(sp && sp.type==='noComm' && pIdx!==undefined && pIdx===G.targets.main) return false;
   return true;
@@ -1746,7 +1750,8 @@ function renderMenu(){
     const done=completed.has(m.id);
     const sel=_selectedMissions.has(m.id);
     const toks=m.tokens.map(t=>`<span class="tok">${t}</span>`).join('');
-    const desc=m.special?m.special.desc:(m.tasks?`과제 ${m.tasks}개`:'');
+    const baseDesc=m.special?m.special.desc:(m.tasks?`과제 ${m.tasks}개`:'');
+    const desc=m.commBlocked?(baseDesc?`${baseDesc} · 무전 전면 금지`:'무전 전면 금지'):baseDesc;
     return `<div class="mcard ${done?'done':''} ${sel?'selected':''}" data-mission="${m.id}">
       ${done?'<span class="check">✓</span>':''}
       <div class="num">${String(m.id).padStart(2,'0')}</div>
@@ -1785,7 +1790,8 @@ function renderHeader(){
       <button class="ghost small" id="toMenu" type="button">← 미션 목록</button>
     </div>
   </header>
-  ${G.mission.special?`<div class="banner"><b>특수 규칙:</b> ${G.mission.special.desc}</div>`:''}`;
+  ${G.mission.special?`<div class="banner"><b>특수 규칙:</b> ${G.mission.special.desc}</div>`:''}
+  ${G.mission.commBlocked?'<div class="banner" style="border-left-color:var(--bad);"><b>특수 규칙:</b> 이번 미션에서는 전원 무전을 사용할 수 없습니다.</div>':''}`;
 }
 
 function seatCard(p,i){
@@ -1897,7 +1903,7 @@ function renderComm(){
   <div class="panel center">
     <h3>무전 통신 (트릭 ${G.trickNumber} 전)</h3>
     <p style="color:var(--muted);font-size:13px;">한 색상 카드를 공개하고, 그 카드가 손에서 최고/최저/유일한지 표시할 수 있습니다. 미션당 1회.</p>
-    ${!allowed?`<p style="color:var(--bad);font-size:12px;">${G.mission.special && G.mission.special.type==='noComm'?'이번 미션에서는 무전을 사용할 수 없습니다.':'현재 통신 두절 상태입니다.'}</p>`:''}
+    ${!allowed?`<p style="color:var(--bad);font-size:12px;">${G.mission.commBlocked?'이번 미션에서는 전원 무전을 사용할 수 없습니다.':(G.mission.special && G.mission.special.type==='noComm'?'이번 미션에서는 무전을 사용할 수 없습니다.':'현재 통신 두절 상태입니다.')}</p>`:''}
     ${human.commUsed?'<p style="color:var(--faint);font-size:12px;">이미 무전을 사용했습니다.</p>':
       allowed? `<div class="comm-grid">
         ${options.map((o,i)=>`<button class="comm-btn" data-i="${i}" style="color:${SUIT_COLOR[o.card.suit]};border-color:${SUIT_COLOR[o.card.suit]};">${SUIT_ICON[o.card.suit]}${o.card.value} · ${tagLabel(o.tag)}</button>`).join('')}
