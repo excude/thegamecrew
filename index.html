@@ -225,7 +225,7 @@ a.back:hover{color:var(--ink);}
 })();
 
 /* ============ CONSTANTS ============ */
-const APP_VERSION='v0.134';
+const APP_VERSION='v0.137';
 const SUITS=['P','B','G','Y'];
 const SUIT_NAME={P:'분홍',B:'파랑',G:'초록',Y:'노랑',R:'로켓'};
 const SUIT_ICON={P:'◆',B:'▲',G:'■',Y:'●',R:'🚀'};
@@ -403,7 +403,7 @@ function log(msg,cls){G.log.push({msg,cls:cls||''});render();}
 /* ============ SETUP ============ */
 let _selectedMissions=new Set(); // 초기화면에서 길게 눌러 다중 선택된 미션 id들
 function openMissionSelect(){
-  G=null;_logModalOpen=false;_storyModalState=null;_selectedMissions=new Set();render();
+  G=null;_logModalOpen=false;_storyModalState=null;_passModalState=null;_selectedMissions=new Set();render();
 }
 function toggleMissionSelect(id){
   if(_selectedMissions.has(id)) _selectedMissions.delete(id);
@@ -424,7 +424,7 @@ function markSelectedMissions(done){
 }
 
 function startMission(id){
-  _logModalOpen=false;_storyModalState=null;
+  _logModalOpen=false;_storyModalState=null;_passModalState=null;
   const mission=MISSIONS.find(m=>m.id===id);
   attempts[id]=(attempts[id]||0)+1;
   const deck=shuffle(freshDeck());
@@ -1098,7 +1098,8 @@ function value1RevealedSuits(){
   const suits=new Set();
   if(!needsValue1Win()) return suits;
   G.players.forEach(p=>{
-    if(p.commUsed && p.commCard && p.commCard.value===1 && p.commCard.suit!=='R'){
+    if(p.commUsed && p.commCard && p.commCard.value===1 && p.commCard.suit!=='R'
+       && p.hand.some(h=>h.suit===p.commCard.suit && h.value===p.commCard.value)){
       suits.add(p.commCard.suit);
     }
   });
@@ -1131,18 +1132,31 @@ function afterFirstTrickHook(){
   const sp=G.mission.special;
   if(sp && sp.type==='randomPass' && G.trickNumber===2 && !G.achieveState.passed){
     G.achieveState.passed=true;
+    const passRecords=[]; // {fromIdx,toIdx,card} for the confirmation popup
     for(let i=0;i<4;i++){
       const from=G.players[(i+1)%4]; // right neighbor gives to i
-      if(!from.hand.length)continue;
-      const idx=Math.floor(Math.random()*from.hand.length);
-      const [card]=from.hand.splice(idx,1);
+      // 무전으로 공개한 카드는 손에 쥔 채 관리하는 게 아니라 이미 바닥에
+      // 내려놓은 카드다. 따라서 이 카드 교환의 "무작위로 뽑을 수 있는
+      // 후보"에서 제외해야 한다 — 그 카드는 애초에 넘길 수 없다.
+      const passable=from.hand.filter(c=>!(from.commCard && from.commTag && c.suit===from.commCard.suit && c.value===from.commCard.value));
+      if(!passable.length)continue;
+      const pick=passable[Math.floor(Math.random()*passable.length)];
+      const handIdx=from.hand.findIndex(c=>c.suit===pick.suit && c.value===pick.value);
+      const [card]=from.hand.splice(handIdx,1);
       G.players[i].hand.push(card);
+      passRecords.push({fromIdx:(i+1)%4,toIdx:i,card});
     }
     G.players.forEach(p=>p.hand.sort((a,b)=>{
       const oa=a.suit==='R'?4:SUITS.indexOf(a.suit), ob=b.suit==='R'?4:SUITS.indexOf(b.suit);
       return oa-ob||a.value-b.value;
     }));
     log('🔀 첫 트릭 후: 각자 오른쪽 대원에게서 무작위 카드 1장을 받았습니다.','sys');
+    const myGave=passRecords.find(r=>r.fromIdx===0);
+    const myReceived=passRecords.find(r=>r.toIdx===0);
+    if(myGave) log(`🔀 내가 준 카드: ${cardSpan(myGave.card)} (→ ${G.players[myGave.toIdx].name})`,'sys');
+    if(myReceived) log(`🔀 내가 받은 카드: ${cardSpan(myReceived.card)} (← ${G.players[myReceived.fromIdx].name})`,'sys');
+    _passModalState={records:passRecords};
+    render();
   }
 }
 
@@ -1173,9 +1187,15 @@ function simBuildRandomWorld(pIdx){
   const worldHands={};others.forEach(i=>worldHands[i]=[]);
   const singleLock={};
   // 무전으로 이미 공개된 카드는 그 대원 손에 고정한다 (공개 정보이므로 치팅이 아님).
+  // 단, randomPass 같은 특수조건으로 트릭 사이에 카드가 대원 간에 강제로
+  // 오갈 수 있으므로, 무전 당시엔 사실이었어도 지금은 더 이상 그 대원 손에
+  // 없을 수 있다. 실제 손패(공개 정보인 "장수"와 별개로, 이미 다른 곳에서
+  // 낸 카드인지는 discardAll로 확인 가능)에 그 카드가 여전히 남아있는지
+  // 확인하지 않고 무조건 고정하면, 카드가 이미 다른 대원 손으로 넘어갔는데도
+  // 시뮬레이션은 계속 원래 무전한 대원이 들고 있다고 착각하는 버그가 생긴다.
   others.forEach(i=>{
     const p=G.players[i];
-    if(p.commUsed && p.commCard){
+    if(p.commUsed && p.commCard && p.hand.some(h=>h.suit===p.commCard.suit && h.value===p.commCard.value)){
       const idx=pool.findIndex(c=>ckey(c)===ckey(p.commCard));
       if(idx!==-1){
         worldHands[i].push(pool.splice(idx,1)[0]);
@@ -1691,6 +1711,7 @@ function render(){
   if(_logModalOpen) html+=renderLogModal();
   if(_storyModalState) html+=renderStoryModal();
   if(_confirmState) html+=renderConfirmModal();
+  if(_passModalState) html+=renderPassModal();
   app.innerHTML=html;
   attachHandlers();
   scheduleSave();
@@ -1791,6 +1812,7 @@ let _targetSel=[];
 let _logModalOpen=false;
 let _confirmState=null; // {msg, onYes}
 let _storyModalState=null; // {id, mode:'preStart'|'view'}
+let _passModalState=null; // {records:[{fromIdx,toIdx,card}]} for randomPass special condition
 function askConfirm(msg,onYes){ _confirmState={msg,onYes:onYes||null}; render(); }
 function renderAssignAllPick(){
   return `<div class="panel center">
@@ -1977,6 +1999,29 @@ function renderConfirmModal(){
   </div>`;
 }
 
+function renderPassModal(){
+  const recs=_passModalState.records;
+  const gave=recs.find(r=>r.fromIdx===0);
+  const received=recs.find(r=>r.toIdx===0);
+  const row=(label,rec)=>rec?`<div class="flexrow" style="justify-content:space-between;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.06);">
+      <span style="color:var(--muted);">${label}</span>
+      <span>${cardSpan(rec.card)}</span>
+    </div>`:'';
+  return `<div class="modalbg" id="passModalBg">
+    <div class="modal center">
+      <h3>🔀 카드 교환</h3>
+      <p style="color:var(--muted);font-size:13px;margin-bottom:8px;">각 대원이 오른쪽 대원에게서 무작위 카드 1장을 받았습니다. (무전으로 공개한 카드는 교환 대상에서 제외됩니다.)</p>
+      <div>
+        ${row('내가 준 카드',gave)}
+        ${row('내가 받은 카드',received)}
+      </div>
+      <div class="opts row">
+        <button class="primary" id="passModalClose" type="button">확인</button>
+      </div>
+    </div>
+  </div>`;
+}
+
 function renderStoryModal(){
   const id=_storyModalState.id;
   const story=MISSION_STORY[id] || '이 미션에 대한 이야기가 아직 준비되지 않았습니다.';
@@ -2071,6 +2116,10 @@ function attachHandlers(){
   if(logModalBg) logModalBg.onclick=(e)=>{ if(e.target.id==='logModalBg'){ _logModalOpen=false; render(); } };
   const logModalClose=document.getElementById('logModalClose');
   if(logModalClose) logModalClose.onclick=()=>{ _logModalOpen=false; render(); };
+  const passModalBg=document.getElementById('passModalBg');
+  if(passModalBg) passModalBg.onclick=(e)=>{ if(e.target.id==='passModalBg'){ _passModalState=null; render(); } };
+  const passModalClose=document.getElementById('passModalClose');
+  if(passModalClose) passModalClose.onclick=()=>{ _passModalState=null; render(); };
   const confirmYesBtn=document.getElementById('confirmYesBtn');
   if(confirmYesBtn) confirmYesBtn.onclick=()=>{ const cb=_confirmState&&_confirmState.onYes; _confirmState=null; if(cb) cb(); else render(); };
   const confirmNoBtn=document.getElementById('confirmNoBtn');
