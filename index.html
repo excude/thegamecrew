@@ -225,7 +225,7 @@ a.back:hover{color:var(--ink);}
 })();
 
 /* ============ CONSTANTS ============ */
-const APP_VERSION='v0.139';
+const APP_VERSION='v0.143';
 const SUITS=['P','B','G','Y'];
 const SUIT_NAME={P:'분홍',B:'파랑',G:'초록',Y:'노랑',R:'로켓'};
 const SUIT_ICON={P:'◆',B:'▲',G:'■',Y:'●',R:'🚀'};
@@ -557,6 +557,7 @@ function beginTaskPick(){
   G.pendingTasks=buildTaskPool();
   if(G.pendingTasks.length===0){ finishDistribution(); return; }
   if(sp && sp.type==='assignAll'){
+    logAssignAllOpinions();
     G.phase='assignAllPick';
     render(); return;
   }
@@ -610,24 +611,41 @@ function processTaskPick(){
     if(weakRockets && handMatches.length){
       choice=(rankedSafeMatches[0]&&rankedSafeMatches[0].t) || handMatches.find(t=>t.value>2) || handMatches[0];
     } else if(nonMatch.length){
-      const counts={};nonMatch.forEach(t=>counts[t.suit]=(counts[t.suit]||0)+1);
+      // 손에 없는 과제는 완수 타이밍을 스스로 통제할 수 없다 — 그 카드를
+      // 실제로 쥔 다른 대원이 "언제" 내느냐에 전적으로 달려있다. 순번
+      // 태그(tokenTag)가 없는 과제는 순서 제약이 없어 언제 완수돼도
+      // 상관없지만, 태그가 붙은(순번이 정해진) 과제를 손에 없는 채로
+      // 떠안으면 훨씬 위험하다 — 내가 통제할 수 없는 타이밍에 그 카드가
+      // 나와버려서, 아직 앞 순번 과제가 안 끝났는데 먼저 완수돼(순번
+      // 위반) 실패하거나, 반대로 뒷 순번 과제가 먼저 우연히 풀려버려
+      // (역시 순번 위반) 실패할 수 있다. 특히 이번처럼 무전이 전면 금지된
+      // 미션에서는 "그 카드를 쥔 대원에게 타이밍을 맞춰달라"고 알릴 방법이
+      // 아예 없으므로 이 위험을 상쇄할 수단이 없다. 그래서 손에 없는 과제
+      // 중에서는 순번 태그가 없는 쪽을 최대한 먼저 고려하고, 그런 선택지가
+      // 하나도 없을 때만 어쩔 수 없이 태그 붙은 과제를 손에 없는 채로 가져간다.
+      const untaggedNonMatch=nonMatch.filter(t=>!t.tokenTag);
+      const pool=untaggedNonMatch.length?untaggedNonMatch:nonMatch;
+      const counts={};pool.forEach(t=>counts[t.suit]=(counts[t.suit]||0)+1);
       const suitPref=Object.keys(counts).sort((a,b)=>{
         const ca=player.hand.filter(c=>c.suit===a).length, cb=player.hand.filter(c=>c.suit===b).length;
         return cb-ca;
       })[0];
-      choice=nonMatch.find(t=>t.suit===suitPref)||nonMatch[0];
+      choice=pool.find(t=>t.suit===suitPref)||pool[0];
     } else {
       choice=(rankedSafeMatches[0]&&rankedSafeMatches[0].t) || handMatches.find(t=>t.value>2) || handMatches[0];
     }
   }
   if(!choice){
-    // else prefer suit AI holds most of
-    const counts={};avail.forEach(t=>counts[t.suit]=(counts[t.suit]||0)+1);
+    // else prefer suit AI holds most of — 여기서도 마찬가지로, 손에 전혀
+    // 매치가 없는 상황이니 순번 태그가 없는 과제를 우선한다(이유는 위 주석과 동일).
+    const untaggedAvail=avail.filter(t=>!t.tokenTag);
+    const pool=untaggedAvail.length?untaggedAvail:avail;
+    const counts={};pool.forEach(t=>counts[t.suit]=(counts[t.suit]||0)+1);
     const suitPref=Object.keys(counts).sort((a,b)=>{
       const ca=player.hand.filter(c=>c.suit===a).length, cb=player.hand.filter(c=>c.suit===b).length;
       return cb-ca;
     })[0];
-    choice=avail.find(t=>t.suit===suitPref)||avail[0];
+    choice=pool.find(t=>t.suit===suitPref)||pool[0];
   }
   assignTask(choice,pIdx);
   G.pickQueue.shift();
@@ -652,6 +670,31 @@ function assignTask(t,pIdx){
 function humanAssignAllPick(pIdx){
   G.pendingTasks.forEach(t=>assignTask(t,pIdx));
   finishDistribution();
+}
+
+// assignAll 미션은 원래 "커맨더가 예/아니오를 물은 뒤" 한 명에게 몰아주는
+// 방식이라, 실제로 누구에게 맡길지 정하려면 그 전에 각자 대답부터 들어야
+// 한다. 손패를 직접 볼 수는 없으니(다른 대원 패는 비공개 정보), 각자
+// 자기 패의 대략적인 자신감만 "예/아니오" 식으로 짧게 답하게 한다 —
+// 정확한 카드 내용을 누설하지 않으면서도 배정 판단에 참고할 신호를 준다.
+function assignAllConfidence(p){
+  const rockets=p.hand.filter(c=>c.suit==='R');
+  const bestRocket=rockets.length?Math.max(...rockets.map(c=>c.value)):0;
+  const highCards=p.hand.filter(c=>c.suit!=='R'&&c.value>=7).length;
+  const suitSet=new Set(p.hand.filter(c=>c.suit!=='R').map(c=>c.suit));
+  return highCards*2 + bestRocket*1.5 + suitSet.size*0.5;
+}
+function logAssignAllOpinions(){
+  G.players.forEach(p=>{
+    if(p.isHuman) return; // 본인 패는 이미 화면에 보이니 스스로 답할 필요 없음
+    const score=assignAllConfidence(p);
+    const msg = score>=7
+      ? `📡 ${p.name}: "네, 제가 맡아볼 수 있을 것 같습니다."`
+      : score>=4
+        ? `📡 ${p.name}: "가능은 하겠지만 장담은 못 드려요."`
+        : `📡 ${p.name}: "음… 솔직히 자신은 없네요."`;
+    log(msg,'win');
+  });
 }
 
 function finishDistribution(){
@@ -1855,14 +1898,19 @@ let _storyModalState=null; // {id, mode:'preStart'|'view'}
 let _passModalState=null; // {records:[{fromIdx,toIdx,card}]} for randomPass special condition
 function askConfirm(msg,onYes){ _confirmState={msg,onYes:onYes||null}; render(); }
 function renderAssignAllPick(){
-  return `<div class="panel center">
+  return `<div class="seats">${G.players.map((p,i)=>seatCard(p,i)).join('')}</div>
+  <div class="panel center">
     <h3>과제 일괄 배정</h3>
     <p style="color:var(--muted);font-size:13px;">커맨더가 예/아니오를 확인한 뒤, 모든 과제(${G.pendingTasks.length}개)를 한 명에게 맡깁니다. 누구에게 맡길까요?</p>
     <div class="opts">
       ${G.players.map(p=>`<button class="assignall-btn" data-id="${p.id}">${p.name}</button>`).join('')}
     </div>
   </div>
-  ${myHandPanel()}`;
+  ${myHandPanel()}
+  <div class="panel logpanel" id="logOpenBtn">
+    <div class="eyebrow"><span>교신 기록</span><span class="tap-hint">탭하여 전체보기</span></div>
+    <div id="log">${G.log.slice().reverse().map(l=>`<div class="${l.cls}">${l.msg}</div>`).join('')}</div>
+  </div>`;
 }
 function renderTaskPick(){
   if(!G.pickQueue.length){ return '<div class="panel center">과제 배정 중...</div>'; } // safety net: queue already drained mid-render
