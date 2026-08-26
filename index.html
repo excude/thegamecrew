@@ -225,7 +225,7 @@ a.back:hover{color:var(--ink);}
 })();
 
 /* ============ CONSTANTS ============ */
-const APP_VERSION='v0.137';
+const APP_VERSION='v0.138';
 const SUITS=['P','B','G','Y'];
 const SUIT_NAME={P:'분홍',B:'파랑',G:'초록',Y:'노랑',R:'로켓'};
 const SUIT_ICON={P:'◆',B:'▲',G:'■',Y:'●',R:'🚀'};
@@ -1663,7 +1663,31 @@ function aiChooseCard(pIdx,legal){
       }
     }
 
-    if(card.suit==='R') score -= 3;
+    if(card.suit==='R'){
+      // rocketsAny/rocketsOrder: 로켓 1~4로 각각 트릭을 이겨야 하는데,
+      // 로켓 카드는 대원당 딱 1장씩만 있다. 로켓을 리드하면 그 즉시 로켓이
+      // 리드 수트로 확정되고, 로켓을 가진 다른 대원은 "수트를 따라야 하는"
+      // 규칙상 무조건 자기 로켓을 내야 한다 — 선택의 여지가 없다. 그런데
+      // 그 대원의 로켓이 내가 리드한 것보다 하나라도 높으면 그 카드가 항상
+      // 이겨버리고, 내가 리드한 낮은 로켓은 이미 나왔으니 다시는 못 써서
+      // 그 숫자는 영영 이길 수 없게 된다. 그래서 "아직 세상에 안 나왔고
+      // 내 손에도 없는" 더 높은 로켓이 하나라도 남아있다면(=100% 다른
+      // 대원 손에 있다는 뜻) 그 로켓을 리드하는 건 사실상 확정 실패다.
+      // 반대로 내 로켓이 현재 안 나온 로켓 중 최고값이면 아무도 못 이기므로
+      // 지금이 가장 안전한 리드 타이밍이다.
+      if(sp && (sp.type==='rocketsAny' || sp.type==='rocketsOrder')){
+        const playedRocketVals=new Set(G.discardAll.filter(c=>c.suit==='R').map(c=>c.value));
+        const higherUnplayedElsewhere=[1,2,3,4].some(v=>v>card.value && !playedRocketVals.has(v) &&
+          !G.players[pIdx].hand.some(h=>h.suit==='R'&&h.value===v));
+        if(isLeading){
+          if(higherUnplayedElsewhere) score -= 400;
+          else score += 60;
+        } else if(wouldWin){
+          score += 60; // 이미 낸 카드들 사이에서 확실히 이기고 있다면 요구조건 충족에 보탬
+        }
+      }
+      score -= 3;
+    }
     // 이길 땐 최대한 낮은(싼) 카드로 이기고, 반드시 질 트릭에서는 오히려
     // 가장 높은(위협적인) 카드부터 먼저 버린다. 예: 리드된 로켓4에 로켓1과
     // 로켓3을 둘 다 못 이기는 상황이라면, 이번에 로켓3을 버려야 다음 트릭에
