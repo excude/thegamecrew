@@ -225,7 +225,7 @@ a.back:hover{color:var(--ink);}
 })();
 
 /* ============ CONSTANTS ============ */
-const APP_VERSION='v0.143';
+const APP_VERSION='v0.144';
 const SUITS=['P','B','G','Y'];
 const SUIT_NAME={P:'분홍',B:'파랑',G:'초록',Y:'노랑',R:'로켓'};
 const SUIT_ICON={P:'◆',B:'▲',G:'■',Y:'●',R:'🚀'};
@@ -574,23 +574,16 @@ function processTaskPick(){
   const player=G.players[pIdx];
   const avail=G.pendingTasks.filter(t=>t.owner===null);
   if(player.isHuman){ render(); return; } // wait for click
-  // AI heuristic: 손에 든 카드와 일치하는 과제(직접 들고 있으면 타이밍을
-  // 스스로 조절할 수 있어 기본적으로 유리)를 우선하되, 그중에서도 값이
-  // 낮은 과제는 직접 들고 있어도 트릭을 이기기 어렵다. 최소 5 이상은
-  // 되어야 비교적 안전하다. 값 4 이하는 9장 중 하위권이라 다른 대원 손에
-  // 더 높은 카드가 있을 가능성이 커서 스스로 이기기 어렵고, 손에 쥐고
-  // 있다는 통제력의 이점도 크지 않다 — 그래서 4 이하 매치밖에 없다면,
-  // 손에 없는(=직접 통제할 수 없지만 어차피 낮은 카드를 억지로 떠안는
-  // 것보다는 나은) 다른 미배정 과제가 남아있는 한 그쪽을 먼저 고려하고,
-  // 정말 다른 선택지가 전혀 없을 때만 어쩔 수 없이 낮은 값 매치를 가져간다.
-  //
-  // 단, 이 "손에 없는 과제가 오히려 낫다"는 전제는 로켓이 튼튼할 때만
-  // 성립한다 — 직접 들고 있지 않은 과제 카드는 결국 그 카드가 나온 트릭을
-  // "누군가"(대개는 로켓) 이겨줘야 완수되는데, 내 로켓이 약하면(1~2 정도
-  // 밖에 없으면) 그 카드가 어떤 수트에서 나오든 이길 방법이 마땅치 않다.
-  // 이럴 땐 차라리 손에 쥔 낮은 과제라도 가져가는 편이 더 낫다 — 최소한
-  // 내가 원하는 타이밍(다른 위협 카드들이 정리된 뒤)에 직접 낼 수 있기
-  // 때문이다.
+  // AI heuristic: 손에 든 카드와 일치하는 과제는 값이 낮더라도 항상
+  // 손에 없는 과제보다 우선한다. 손에 쥔 과제는 완수 타이밍을 내가
+  // 스스로 통제할 수 있다 — 다른 대원들의 카드 흐름(협조 로직)이 정리된
+  // 뒤 원하는 순간에 직접 낼 수 있기 때문이다. 반면 손에 없는 과제는
+  // 그 카드를 실제로 쥔 "다른" 대원이 언제 어떻게 내느냐에 전적으로
+  // 달려있어, 내가 로켓이 강해서 트릭을 잘 이기는 것과는 무관하게
+  // 항상 더 위험하다 — 로켓으로 이기는 능력은 그 특정 카드를 쥐고
+  // 있는지와 아무 상관이 없다. (예: 로켓4를 쥔 대원이 다이아몬드를
+  // 한 장도 안 쥔 채로 손에 없는 다이아몬드 과제를 고르면, 로켓이
+  // 아무리 강해도 그 과제를 완수할 방법이 없다.)
   const handMatches=avail.filter(t=>player.hand.some(c=>c.suit===t.suit&&c.value===t.value));
   // 값이 5 이상인 매치 후보라도 무작정 "배열에서 먼저 나온 것"을 고르면 안 된다.
   // 예: 손에 ●6·●5가 있을 때 ●5를 과제로 골라도, 그 수트의 ●7~9나 우주선이
@@ -603,14 +596,19 @@ function processTaskPick(){
     .map(t=>({t,threat:remainingThreatCount(pIdx,{suit:t.suit,value:t.value})}))
     .sort((a,b)=>a.threat-b.threat || b.t.value-a.t.value);
   let choice = (rankedSafeMatches.length && rankedSafeMatches[0].threat<=2) ? rankedSafeMatches[0].t : null;
+  if(!choice && handMatches.length){
+    // 안전한(값>4·위협 적음) 매치가 없어도, 손에 있는 매치라면 여전히
+    // 손에 없는 과제보다 낫다 — 값이 낮은 걸 억지로 떠안더라도, 최소한
+    // 내가 원하는 타이밍에 낼 수 있다는 통제력만은 확실하기 때문이다.
+    // 위협 카운팅으로 그나마 나은 걸, 없으면 값이 조금이라도 더 높은 걸 고른다.
+    const ranked=handMatches
+      .map(t=>({t,threat:remainingThreatCount(pIdx,{suit:t.suit,value:t.value})}))
+      .sort((a,b)=>a.threat-b.threat || b.t.value-a.t.value);
+    choice=ranked[0].t;
+  }
   if(!choice){
-    const myRockets=player.hand.filter(c=>c.suit==='R');
-    const bestRocket=myRockets.length? Math.max(...myRockets.map(c=>c.value)) : 0;
-    const weakRockets=bestRocket<3;
     const nonMatch=avail.filter(t=>!handMatches.includes(t));
-    if(weakRockets && handMatches.length){
-      choice=(rankedSafeMatches[0]&&rankedSafeMatches[0].t) || handMatches.find(t=>t.value>2) || handMatches[0];
-    } else if(nonMatch.length){
+    {
       // 손에 없는 과제는 완수 타이밍을 스스로 통제할 수 없다 — 그 카드를
       // 실제로 쥔 다른 대원이 "언제" 내느냐에 전적으로 달려있다. 순번
       // 태그(tokenTag)가 없는 과제는 순서 제약이 없어 언제 완수돼도
@@ -631,8 +629,6 @@ function processTaskPick(){
         return cb-ca;
       })[0];
       choice=pool.find(t=>t.suit===suitPref)||pool[0];
-    } else {
-      choice=(rankedSafeMatches[0]&&rankedSafeMatches[0].t) || handMatches.find(t=>t.value>2) || handMatches[0];
     }
   }
   if(!choice){
