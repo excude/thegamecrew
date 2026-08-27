@@ -225,7 +225,7 @@ a.back:hover{color:var(--ink);}
 })();
 
 /* ============ CONSTANTS ============ */
-const APP_VERSION='v0.144';
+const APP_VERSION='v0.145';
 const SUITS=['P','B','G','Y'];
 const SUIT_NAME={P:'분홍',B:'파랑',G:'초록',Y:'노랑',R:'로켓'};
 const SUIT_ICON={P:'◆',B:'▲',G:'■',Y:'●',R:'🚀'};
@@ -1508,6 +1508,28 @@ function suitLeadDangerValue(suit,pIdx){
   return danger;
 }
 
+// 로켓을 리드하면(legalCards 규칙상) 로켓이 하나도 없는 대원은 이번
+// 트릭에서 수트 제약이 완전히 사라져 손에 든 아무 카드나 낼 수 있게
+// 된다. 일반 수트를 리드할 때는 그 수트를 쥔 대원만 따라야 하고 나머지
+// (그 수트가 없는 대원)만 자유로워지는 것과 달리, 로켓 리드는 사실상
+// "모든 수트"에서 동시에 그 자유를 열어준다 — 남의 과제 카드를 쥔
+// 대원이 별생각 없이 아무 때나 던져버릴 위험이 훨씬 커진다는 뜻이다.
+// 내 손에 있는 과제는 내가 나중에 직접 통제하면 되니 무관하고, 로켓
+// 수트 자체의 과제도 이 위험과는 상관없다. 남은 트릭이 적을수록(만회할
+// 기회가 줄어드므로) 위험 가중치를 더 크게 준다.
+function rocketLeadDanger(pIdx){
+  let count=0;
+  for(const t of G.pendingTasks){
+    if(t.done || t.suit==='R' || t.owner===pIdx) continue;
+    if(G.players[pIdx].hand.some(c=>c.suit===t.suit&&c.value===t.value)) continue;
+    count++;
+  }
+  if(!count) return 0;
+  const tricksLeft=MAXTRICKS-G.trickNumber+1;
+  const urgency = tricksLeft<=3 ? 2 : 1;
+  return count*35*urgency;
+}
+
 function aiChooseCard(pIdx,legal){
   let best=null,bestScore=-1e9;
   const sp=G.mission.special;
@@ -1551,6 +1573,12 @@ function aiChooseCard(pIdx,legal){
         // 동료가 이 수트의 값1을 무전으로 밝혔다 — 이 수트를 리드하면 그
         // 동료가 원치 않는 타이밍에 값1을 털어놓게 만들 수 있으므로 자제한다.
         score -= 150;
+      }
+      if(card.suit==='R'){
+        // 로켓 리드는 로켓 없는 모든 대원의 수트 제약을 한 번에 풀어버려,
+        // 아직 완수 안 된 남의 과제 카드가 아무 때나 무심코 던져질 위험을
+        // 키운다(자세한 이유는 rocketLeadDanger 주석 참고).
+        score -= rocketLeadDanger(pIdx);
       }
     }
 
