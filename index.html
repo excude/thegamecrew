@@ -225,7 +225,7 @@ a.back:hover{color:var(--ink);}
 })();
 
 /* ============ CONSTANTS ============ */
-const APP_VERSION='v0.146';
+const APP_VERSION='v0.147';
 const SUITS=['P','B','G','Y'];
 const SUIT_NAME={P:'분홍',B:'파랑',G:'초록',Y:'노랑',R:'로켓'};
 const SUIT_ICON={P:'◆',B:'▲',G:'■',Y:'●',R:'🚀'};
@@ -1700,6 +1700,7 @@ function aiChooseCard(pIdx,legal){
           // 꺼리는 문제가 있었다.
           const remainingCount=4-hypothetical.length;
           let riskPenalty=0;
+          let gateBonus=0;
           for(const hit of foreignHits){
             const ownerPlay=hypothetical.find(p=>p.player===hit.t.owner);
             if(ownerPlay){
@@ -1717,8 +1718,20 @@ function aiChooseCard(pIdx,legal){
               // 과제 주인이 아직 안 냈다 — 누가 가져갈지조차 불확실하니 보수적으로.
               riskPenalty += Math.max(0,remainingCount)*18;
             }
+            if(hit.t.tokenTag){
+              // 순번 태그가 붙은 과제는 단순히 "과제 하나 완수"가 아니라,
+              // 이게 끝나야 태그 없는 과제들과 다음 순번 과제들까지 전부
+              // 완수 가능한 상태로 풀리는 "문 열기" 역할을 한다. 남의
+              // 과제라도 지금 안전하게 완수시킬 기회를 그냥 흘려보내면,
+              // 나머지 과제 전부가 계속 묶인 채로 남아 매 트릭 순서
+              // 위반 위험만 쌓인다 — 그래서 일반 남의 과제보다 완수
+              // 가치를 더 높게 쳐준다. 아직 안 끝난 과제가 많을수록
+              // (=많이 풀어주는 셈이므로) 보너스도 커진다.
+              const blockedCount=G.pendingTasks.filter(o=>!o.done && o!==hit.t).length;
+              gateBonus += Math.min(8,blockedCount)*5;
+            }
           }
-          score += 15-riskPenalty;
+          score += 15-riskPenalty+gateBonus;
         }
       }
     }
