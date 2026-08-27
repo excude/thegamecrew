@@ -225,7 +225,7 @@ a.back:hover{color:var(--ink);}
 })();
 
 /* ============ CONSTANTS ============ */
-const APP_VERSION='v0.147';
+const APP_VERSION='v0.148';
 const SUITS=['P','B','G','Y'];
 const SUIT_NAME={P:'분홍',B:'파랑',G:'초록',Y:'노랑',R:'로켓'};
 const SUIT_ICON={P:'◆',B:'▲',G:'■',Y:'●',R:'🚀'};
@@ -1768,10 +1768,17 @@ function aiChooseCard(pIdx,legal){
       const relatedTasks=G.pendingTasks.filter(t=>!t.done && t.suit===card.suit &&
         taskOrderOK(t) &&
         !myHand.some(h=>h.suit===t.suit && h.value===t.value));
+      // 순번 태그(tokenTag, Ω 제외)가 붙은 과제는 taskOrderOK를 통과한 시점에
+      // 이미 "지금 당장 완수해도 되는 유일한 순번 과제"라는 뜻이다 — 이게
+      // 풀려야 그 뒤 순번 과제와 순번 없는 과제들까지 전부 완수 가능한
+      // 상태로 열리는 '문 열기' 과제이므로, 그냥 순번 없는 과제보다 그
+      // 수트를 먼저 이끌어낼 가치가 훨씬 크다. 그래서 안전/위험 가중치
+      // 모두에 이 과제 쪽 비중을 더 크게 준다.
+      const gateWeight=t=>(t.tokenTag && t.tokenTag!=='Ω')?2:1;
       // 안전한 경우: 이 카드가 그 과제 값보다 낮다 — 수트를 이끌어도 과제
       // 주인이 자기 과제 카드로 내 카드를 충분히 이길 수 있으니 도움이 된다.
-      const safeHelp=relatedTasks.filter(t=>card.value<t.value).length;
-      if(safeHelp) score += 7*safeHelp;
+      const safeHelpTasks=relatedTasks.filter(t=>card.value<t.value);
+      if(safeHelpTasks.length) score += safeHelpTasks.reduce((sum,t)=>sum+7*gateWeight(t),0);
       // 위험한 경우: 이 카드가 남의 미완수 과제보다 높다. 특히 리드할 때는
       // 그 즉시 이 수트가 이번 트릭의 리드 수트로 확정되고, 과제 주인이
       // 수트를 따라야 하는데 마침 이 카드보다 낮은 자기 과제 카드밖에
@@ -1781,8 +1788,8 @@ function aiChooseCard(pIdx,legal){
       // 리드가 아니라 강제로 수트를 따르는 상황이라면 애초에 선택의 여지가
       // 없으므로 이 페널티를 적용하지 않는다.
       if(isLeading){
-        const dangerousLead=relatedTasks.filter(t=>card.value>t.value && t.owner!==pIdx).length;
-        if(dangerousLead) score -= 60*dangerousLead;
+        const dangerousLeadTasks=relatedTasks.filter(t=>card.value>t.value && t.owner!==pIdx);
+        if(dangerousLeadTasks.length) score -= dangerousLeadTasks.reduce((sum,t)=>sum+60*gateWeight(t),0);
       }
     }
 
