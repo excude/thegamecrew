@@ -225,7 +225,7 @@ a.back:hover{color:var(--ink);}
 })();
 
 /* ============ CONSTANTS ============ */
-const APP_VERSION='v0.153';
+const APP_VERSION='v0.154';
 const SUITS=['P','B','G','Y'];
 const SUIT_NAME={P:'분홍',B:'파랑',G:'초록',Y:'노랑',R:'로켓'};
 const SUIT_ICON={P:'◆',B:'▲',G:'■',Y:'●',R:'🚀'};
@@ -1853,8 +1853,19 @@ function aiChooseCard(pIdx,legal){
       // 모두에 이 과제 쪽 비중을 더 크게 준다(taskPriorityWeight 참고).
       // 안전한 경우: 이 카드가 그 과제 값보다 낮다 — 수트를 이끌어도 과제
       // 주인이 자기 과제 카드로 내 카드를 충분히 이길 수 있으니 도움이 된다.
+      // 리드하는 상황이라면, 공개 정보(내 손패+이미 나온 카드)만으로 그
+      // 과제 값보다 높은 카드가 세상에 하나도 안 남았는지까지 확인한다 —
+      // 그렇다면 이 수트를 지금 리드하는 건 "도움이 된다" 정도가 아니라
+      // 사실상 100% 안전이 확정된 것이므로(예: 이미 더 높은 카드들이 다
+      // 나왔다면) 훨씬 크게 우대해서, 그런 확실한 기회를 그냥 흘려보내지
+      // 않게 한다.
       const safeHelpTasks=relatedTasks.filter(t=>card.value<t.value);
-      if(safeHelpTasks.length) score += safeHelpTasks.reduce((sum,t)=>sum+7*taskPriorityWeight(t),0);
+      if(safeHelpTasks.length){
+        score += safeHelpTasks.reduce((sum,t)=>{
+          const certain=isLeading && remainingThreatCount(pIdx,{suit:t.suit,value:t.value})===0;
+          return sum+(certain?40:7)*taskPriorityWeight(t);
+        },0);
+      }
       // 위험한 경우: 이 카드가 남의 미완수 과제보다 높다. 특히 리드할 때는
       // 그 즉시 이 수트가 이번 트릭의 리드 수트로 확정되고, 과제 주인이
       // 수트를 따라야 하는데 마침 이 카드보다 낮은 자기 과제 카드밖에
